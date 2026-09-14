@@ -4,6 +4,8 @@
 #include <QFontDatabase>
 #include <QPainter>
 #include <QTextBlock>
+#include <QtMath> 
+#include "FixedHeightLayout.h"
 
 CodeEditor::CodeEditor(QWidget *parent)
 	: QPlainTextEdit(parent)
@@ -12,6 +14,18 @@ CodeEditor::CodeEditor(QWidget *parent)
 	QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
 	font.setPointSize(11);
 	setFont(font);
+	   
+
+	// Подменяем layout документа на кастомный
+	auto *customLayout = new FixedHeightLayout(document());
+
+	// Вычисляем и фиксируем высоту строки по моноширинному шрифту
+	QFontMetricsF fm(font);
+	qreal lineHeight = qCeil(fm.lineSpacing());
+	customLayout->setFixedLineHeight(lineHeight);
+
+	document()->setDocumentLayout(customLayout);
+	
 
 	// Отступы и табуляция
 	setTabStopDistance(4 * fontMetrics().horizontalAdvance(' '));

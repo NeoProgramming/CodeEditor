@@ -85,6 +85,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="FontManager.cpp" />
     <ClCompile Include="Highlighter.cpp" />
     <ClCompile Include="MainWindow.cpp" />
     <QtRcc Include="CodeEditor.qrc" />
@@ -97,6 +98,12 @@
   </ItemGroup>
   <ItemGroup>
     <QtMoc Include="Highlighter.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="FontManager.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="FixedHeightLayout.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')">
