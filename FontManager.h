@@ -45,6 +45,15 @@ public:
 	// Количество зарегистрированных шрифтов
 	int fontCount() const { return m_fonts.size(); }
 
+	// Рекомендуемая высота строки: максимум height() по всем загруженным шрифтам
+	int recommendedLineHeight() const;
+	
+public:
+	void clear();
+
+signals:
+	void fontsChanged();
+	void cellSizeChanged();
 private:
 	QVector<FontEntry> m_fonts;
 	int m_cellWidth;

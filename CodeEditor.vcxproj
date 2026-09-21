@@ -85,9 +85,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="FontDialog.cpp" />
     <ClCompile Include="FontManager.cpp" />
     <ClCompile Include="Highlighter.cpp" />
     <ClCompile Include="MainWindow.cpp" />
+    <ClCompile Include="StylePreview.cpp" />
+    <ClCompile Include="syntaxstyle.cpp" />
     <QtRcc Include="CodeEditor.qrc" />
     <QtMoc Include="CodeEditor.h" />
     <ClCompile Include="CodeEditor.cpp" />
@@ -104,6 +107,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FixedHeightLayout.h" />
+    <QtMoc Include="FontDialog.h" />
+    <QtMoc Include="StylePreview.h" />
+    <ClInclude Include="syntaxstyle.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')">

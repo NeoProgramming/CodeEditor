@@ -19,6 +19,9 @@ void FontManager::setCellSize(int width, int height)
 	for (auto &entry : m_fonts) {
 		calibrateFont(entry);
 	}
+
+	emit cellSizeChanged();
+	emit fontsChanged();
 }
 
 int FontManager::addFont(const QString &family, bool bold, bool italic) 
@@ -78,86 +81,53 @@ const FontEntry& FontManager::getFontEntry(int index) const
 	return m_fonts[index];
 }
 
+int FontManager::recommendedLineHeight() const
+{
+	int maxH = 0;
+	for (const FontEntry &entry : m_fonts) {
+		if (entry.metrics.height > maxH)
+			maxH = entry.metrics.height;
+	}
+	return maxH;
+}
+
 bool FontManager::calibrateFont(FontEntry &entry) 
 {
 	// Ищем размер моноширинного шрифта, при котором ширина символа в точности равен требуемому
 
-	// 1. Создаем базовый QFont
-	QFont baseFont(entry.family, 10);
+	QFont baseFont(entry.family);
 	baseFont.setBold(entry.bold);
 	baseFont.setItalic(entry.italic);
 	baseFont.setStyleHint(QFont::Monospace);
+	baseFont.setFixedPitch(true);
 
-	// 2. Поиск подходящего pointSize
-	int pointSize = 10;				// начальное значение в точках
-	const int maxAttempts = 200;	// количество попыток
-
-	for (int attempt = 0; attempt < maxAttempts; ++attempt) {
-		QFont testFont = baseFont;
-		testFont.setPointSize(pointSize);
-		QFontMetrics fm(testFont);
-
-		int charWidth = fm.horizontalAdvance('M'); // Эталонный символ
-		int charHeight = fm.height();
-		int ascent = fm.ascent();
-		int descent = fm.descent();
-
-		// 3. Проверка: совпадает ли ширина с целевой
-		if (charWidth == m_cellWidth) {
-			// Идеальное совпадение
-			entry.font = testFont;
-			entry.pointSize = pointSize;
-			entry.metrics = { charWidth, charHeight, ascent, descent };
+	auto tryFont = [&](const QFont &f) -> bool {
+		QFontMetrics fm(f);
+		const int w = fm.horizontalAdvance(QLatin1Char('M'));
+		const int h = fm.height();
+		if (w == m_cellWidth && h <= m_cellHeight) {
+			entry.font = f;
+			entry.pointSize = f.pointSize(); // может быть -1, если задан pixelSize
+			entry.metrics = { w, h, fm.ascent(), fm.descent() };
 			return true;
 		}
+		return false;
+	};
 
-		// 4. Если ширина меньше целевой — увеличиваем размер
-		if (charWidth < m_cellWidth) {
-			++pointSize;
-		}
-		else {
-			// Если ширина больше целевой — уменьшаем
-			--pointSize;
-		}
-
-		// Защита от бесконечного цикла
-		if (pointSize < 1 || pointSize > 100) break;
-	}
-
-	// 5. Если точного совпадения нет — выбираем ближайшее
-	//    Проходим все размеры от 1 до 100 и ищем минимальную разницу
-	int bestPointSize = 10;
-	int bestDiff = INT_MAX;
-	QFont bestFont;
-
-	for (int ps = 1; ps <= 100; ++ps) {
-		QFont testFont = baseFont;
-		testFont.setPointSize(ps);
-		QFontMetrics fm(testFont);
-
-		int width = fm.horizontalAdvance('M');
-		int diff = std::abs(width - m_cellWidth);
-
-		if (diff < bestDiff) {
-			bestDiff = diff;
-			bestPointSize = ps;
-			bestFont = testFont;
-		}
-	}
-
-	// Проверяем, что разница приемлема (например, не более 1 пикселя)
-	if (bestDiff <= 1) {
-		QFontMetrics fm(bestFont);
-		entry.font = bestFont;
-		entry.pointSize = bestPointSize;
-		entry.metrics = {
-			fm.horizontalAdvance('M'),
-			fm.height(),
-			fm.ascent(),
-			fm.descent()
-		};
-		return true;
+	// Перебор по pixelSize — самая плотная сетка
+	for (int px = 4; px <= 96; ++px) {
+		QFont f = baseFont;
+		f.setPixelSize(px);
+		if (tryFont(f))
+			return true;
 	}
 
 	return false;
+}
+
+// fontmanager.cpp
+void FontManager::clear()
+{
+	m_fonts.clear();
+	emit fontsChanged();
 }

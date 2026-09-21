@@ -112,3 +112,14 @@ void Highlighter::highlightBlock(const QString &text)
 			startIndex + commentLength);
 	}
 }
+
+void Highlighter::setStyles(const QVector<SyntaxElementStyle> &styles,
+	FontManager *fm,
+	const QHash<QString, int> &elementFontIndex)
+{
+//	m_styles = styles;
+//	m_fontManager = fm;
+//	m_elementFontIndex = elementFontIndex;
+//	m_formatCache.clear();   // если кэшировали
+	rehighlight();
+}
