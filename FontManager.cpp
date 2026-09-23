@@ -46,7 +46,10 @@ int FontManager::addFont(const QString &family, bool bold, bool italic)
 	return index;
 }
 
+bool FontManager::setFont(int index, const QString &family, bool bold, bool italic)
+{
 
+}
 
 GlyphMetrics FontManager::getGlyphMetrics(int index) const 
 {

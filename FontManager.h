@@ -30,6 +30,8 @@ public:
 
 	// Добавление шрифта - возвращает индекс
 	int addFont(const QString &family, bool bold = false, bool italic = false);
+	// Обновление шрифта по индексу
+	bool setFont(int index, const QString &family, bool bold, bool italic);
 
 	// Получение шрифта по индексу
 	QFont getFont(int index) const;
