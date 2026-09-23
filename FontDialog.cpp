@@ -226,6 +226,7 @@ void FontDialog::onFontFamilyChanged(const QString &family)
 {
 	if (m_currentRow < 0) return;
 	m_elements[m_currentRow].fontFamily = family;
+	applyCurrentElementToFontManager();
 	refreshPreview();
 }
 
@@ -233,6 +234,7 @@ void FontDialog::onBoldChanged(bool checked)
 {
 	if (m_currentRow < 0) return;
 	m_elements[m_currentRow].bold = checked;
+	applyCurrentElementToFontManager();
 	refreshPreview();
 }
 
@@ -240,6 +242,7 @@ void FontDialog::onItalicChanged(bool checked)
 {
 	if (m_currentRow < 0) return;
 	m_elements[m_currentRow].italic = checked;
+	applyCurrentElementToFontManager();
 	refreshPreview();
 }
 
@@ -251,6 +254,30 @@ void FontDialog::onColorClicked()
 	if (!c.isValid()) return;
 	m_elements[m_currentRow].color = c;
 	refreshPreview();
+}
+
+void FontDialog::applyCurrentElementToFontManager()
+{
+	// »ндекс шрифта в FontManager соответствует индексу элемента
+	// (если вы держите их синхронно Ч см. ниже)
+	const SyntaxElementStyle &e = m_elements[m_currentRow];
+
+	if (!m_fontManager->setFont(m_currentRow, e.fontFamily, e.bold, e.italic)) {
+		//  алибровка не удалась Ч откатываем UI к прежнему состо€нию
+		// или показываем предупреждение.
+		m_metricsLabel->setText(
+			tr("Warning: cannot calibrate \"%1\" to %2 px cell width.")
+			.arg(e.fontFamily)
+			.arg(m_fontManager->getCellWidth()));
+		return;
+	}
+
+	// ќбновл€ем метрики в лейбле
+	const GlyphMetrics gm = m_fontManager->getGlyphMetrics(m_currentRow);
+	m_metricsLabel->setText(
+		tr("Width: %1, Height: %2, Ascent: %3, Descent: %4")
+		.arg(gm.width).arg(gm.height)
+		.arg(gm.ascent).arg(gm.descent));
 }
 
 void FontDialog::onCellWidthChanged(int w)

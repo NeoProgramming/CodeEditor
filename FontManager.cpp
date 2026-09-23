@@ -48,7 +48,35 @@ int FontManager::addFont(const QString &family, bool bold, bool italic)
 
 bool FontManager::setFont(int index, const QString &family, bool bold, bool italic)
 {
+	if (index < 0 || index >= m_fonts.size())
+		return false;
 
+	// Готовим запись-кандидата, не трогая текущую
+	FontEntry candidate;
+	candidate.family = family;
+	candidate.bold = bold;
+	candidate.italic = italic;
+	candidate.pointSize = 10; // заглушка, реальное значение выставит calibrateFont
+
+	if (!calibrateFont(candidate))
+		return false; // калибровка не удалась — оставляем старую запись
+
+	// Если всё совпало с текущей — ничего не делаем
+	const FontEntry &cur = m_fonts[index];
+	const bool same = (cur.family == candidate.family
+		&& cur.bold == candidate.bold
+		&& cur.italic == candidate.italic
+		&& cur.font == candidate.font
+		&& cur.metrics.width == candidate.metrics.width
+		&& cur.metrics.height == candidate.metrics.height
+		&& cur.metrics.ascent == candidate.metrics.ascent
+		&& cur.metrics.descent == candidate.metrics.descent);
+	if (same)
+		return true;
+
+	m_fonts[index] = candidate;
+	emit fontsChanged();
+	return true;
 }
 
 GlyphMetrics FontManager::getGlyphMetrics(int index) const 

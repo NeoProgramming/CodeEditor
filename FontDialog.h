@@ -47,6 +47,7 @@ private:
 	void buildTopPanel(QVBoxLayout *root);
 	void buildCentralPanel(QVBoxLayout *root);
 	void buildBottomPanel(QVBoxLayout *root);
+	void applyCurrentElementToFontManager();
 
 	void loadFromModel();
 	void saveToModel();

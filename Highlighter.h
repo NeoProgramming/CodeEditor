@@ -6,32 +6,73 @@
 #include <QVector>
 
 #include "syntaxstyle.h"
-#include "FontManager.h"
+
+class FontManager;
+
+// Индексы синтаксических элементов.
+// Должны совпадать с порядком в defaultSyntaxElements() и,
+// соответственно, с порядком записей в FontManager.
+enum SyntaxElement {
+	ELEM_DEFAULT = 0,
+	ELEM_KEYWORD,
+	ELEM_TYPE,
+	ELEM_FUNCTION,
+	ELEM_STRING,
+	ELEM_CHAR,
+	ELEM_NUMBER,
+	ELEM_COMMENT,
+	ELEM_PREPROC,
+	ELEM_ASM,
+	ELEM_SCRIPT,
+	ELEM_JSON,
+	ELEM_XML,
+	ELEM_QUASI,
+	ELEM_MACRO,
+	ELEM_SMACRO,
+	ELEM_COUNT
+};
 
 class Highlighter : public QSyntaxHighlighter
 {
 	Q_OBJECT
 
 public:
-	explicit Highlighter(QTextDocument *parent = nullptr);
+	explicit Highlighter(QTextDocument *doc,
+		FontManager *fontManager = nullptr,
+		const QVector<SyntaxElementStyle> &elements = {},
+		QObject *parent = nullptr);
 
-	void Highlighter::setStyles(const QVector<SyntaxElementStyle> &styles,
-		FontManager *fm,
-		const QHash<QString, int> &elementFontIndex);
+	// Обновить стили и/или FontManager.
+	// Пересобирает кэш форматов и вызывает rehighlight().
+	void setStyles(const QVector<SyntaxElementStyle> &elements,
+		FontManager *fontManager);
+
+	// Доступ к текущим стилям (на случай, если нужно извне)
+	const QVector<SyntaxElementStyle> &styles() const { return m_elements; }
 
 protected:
 	void highlightBlock(const QString &text) override;
 
 private:
+	// Пересобирает m_formatCache по m_elements и m_fontManager
+	void rebuildFormatCache();
+
+	// ---- Правила для однострочных токенов ----
 	struct Rule {
 		QRegularExpression pattern;
-		QTextCharFormat format;
+		int                elementIndex; // индекс в m_elements / m_formatCache
 	};
 
-	QVector<Rule> rules;
+	void buildRules();
+	void highlightMultiLineComment(const QString &text);
 
-	// Многострочные комментарии /* ... */
-	QRegularExpression commentStart;
-	QRegularExpression commentEnd;
-	QTextCharFormat multiLineCommentFormat;
+	// ---- Данные ----
+	FontManager                *m_fontManager = nullptr;
+	QVector<SyntaxElementStyle> m_elements;
+	QVector<QTextCharFormat>    m_formatCache; // индекс = индекс элемента
+	QVector<Rule>               m_rules;
+
+	// Для многострочных /* ... */
+	QRegularExpression m_commentStart;
+	QRegularExpression m_commentEnd;
 };

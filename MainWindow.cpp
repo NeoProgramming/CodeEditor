@@ -42,7 +42,7 @@ MainWindow::MainWindow(QWidget *parent)
 	
 	//	m_fontManager,
 	//	m_syntaxElements,
-	//	m_elementFontIndex);
+	
 
 	createActions();
 	createMenus();
@@ -151,7 +151,7 @@ void MainWindow::createMenus()
 }
 void MainWindow::createStatusBar() 
 { 
-	statusBar()->showMessage("Готово"); 
+	statusBar()->showMessage("Ready"); 
 }
 
 void MainWindow::newFile()
@@ -241,8 +241,7 @@ void MainWindow::chooseFont()
 	rebuildFontPool();
 
 	// 5. Обновляем подсветку — она должна знать новые QFont и цвета
-	m_highlighter->setStyles(m_syntaxElements, m_fontManager,
-		m_elementFontIndex);
+	m_highlighter->setStyles(m_syntaxElements, m_fontManager);
 
 	// 6. Просим редактор пересчитать layout и перерисоваться
 //	editor->onFontsChanged();
@@ -283,8 +282,7 @@ void MainWindow::about()
 void MainWindow::rebuildFontPool()
 {
 	m_fontManager->clear();
-	m_elementFontIndex.clear();
-
+	
 	for (const SyntaxElementStyle &e : m_syntaxElements) {
 		const int idx = m_fontManager->addFont(e.fontFamily, e.bold, e.italic);
 		if (idx < 0) {
@@ -294,13 +292,8 @@ void MainWindow::rebuildFontPool()
 			// или системный моноширинный.
 			// Здесь оставляем -1: подсветка будет использовать fallback.
 		}
-		m_elementFontIndex.insert(e.id, idx);
 	}
 
 	emit m_fontManager->fontsChanged();
 }
 
-int MainWindow::fontIndexFor(const QString &elementId) const
-{
-	return m_elementFontIndex.value(elementId, -1);
-}
