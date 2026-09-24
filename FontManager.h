@@ -15,9 +15,9 @@ struct FontEntry {
 	QString family;
 	bool bold;
 	bool italic;
-	int pointSize;  // Реальный размер в пунктах
 	QFont font;
 	GlyphMetrics metrics;
+	int verticalOffset = 0;
 };
 
 class FontManager : public QObject {

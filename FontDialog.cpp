@@ -16,6 +16,11 @@
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
 #include <QMessageBox>
+#include <QTreeWidget>
+#include <QHeaderView>
+#include <QPainter>
+#include <QTimer>
+#include <QTreeWidgetItem>
 
 FontDialog::FontDialog(FontManager *fontManager,
 	const QVector<SyntaxElementStyle> &elements,
@@ -29,6 +34,7 @@ FontDialog::FontDialog(FontManager *fontManager,
 
 	buildUi();
 	loadFromModel();
+	QTimer::singleShot(1, this, &FontDialog::updateColorButton);
 }
 
 // ---------------------------------------------------------------- UI
@@ -92,8 +98,16 @@ void FontDialog::buildCentralPanel(QVBoxLayout * /*unused*/)
 	// ----- Слева: список элементов -----
 	auto *leftBox = new QGroupBox("Syntax elements", this);
 	auto *leftLay = new QVBoxLayout(leftBox);
-	m_elementList = new QListWidget(leftBox);
-	leftLay->addWidget(m_elementList);
+	m_elementTree = new QTreeWidget(leftBox);
+	m_elementTree->setColumnCount(2);
+	m_elementTree->setHeaderLabels({ "Element", "Style" });
+	m_elementTree->setRootIsDecorated(true);
+	m_elementTree->setUniformRowHeights(true);
+	m_elementTree->setAlternatingRowColors(true);
+	m_elementTree->header()->setStretchLastSection(true);
+	m_elementTree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+	m_elementTree->header()->setSectionResizeMode(1, QHeaderView::Stretch);
+	leftLay->addWidget(m_elementTree);
 
 	// ----- Справа: редактор выбранного элемента -----
 	m_editorBox = new QGroupBox("Style", this);
@@ -104,14 +118,24 @@ void FontDialog::buildCentralPanel(QVBoxLayout * /*unused*/)
 
 	m_boldCheck = new QCheckBox("Bold", m_editorBox);
 	m_italicCheck = new QCheckBox("Italic", m_editorBox);
+	m_colorButton = new QPushButton(m_editorBox);
+	m_colorButton->setFixedHeight(24);
+	m_colorButton->setMinimumWidth(80);
+	m_colorButton->setFlat(false);
+	m_colorButton->setAutoFillBackground(true);
+	m_colorButton->setText(QString()); // без надписи
+	m_colorButton->setToolTip("Choose text color");
+	
 	auto *styleLay = new QHBoxLayout();
+	styleLay->setContentsMargins(0, 0, 0, 0);
 	styleLay->addWidget(m_boldCheck);
 	styleLay->addWidget(m_italicCheck);
+	// Растяжка по центру — всё свободное место уходит сюда
 	styleLay->addStretch();
+	styleLay->addWidget(new QLabel("Color:", m_editorBox));
+	styleLay->addWidget(m_colorButton);
 	form->addRow("Style:", styleLay);
 
-	m_colorButton = new QPushButton("Choose color...", m_editorBox);
-	form->addRow("Color:", m_colorButton);
 
 	m_metricsLabel = new QLabel(m_editorBox);
 	m_metricsLabel->setWordWrap(true);
@@ -120,7 +144,7 @@ void FontDialog::buildCentralPanel(QVBoxLayout * /*unused*/)
 	central->addWidget(leftBox, 1);
 	central->addWidget(m_editorBox, 1);
 
-	connect(m_elementList, &QListWidget::currentRowChanged,
+	connect(m_elementTree, &QTreeWidget::currentItemChanged,
 		this, &FontDialog::onElementSelected);
 	connect(m_fontCombo, &QComboBox::currentTextChanged,
 		this, &FontDialog::onFontFamilyChanged);
@@ -128,6 +152,84 @@ void FontDialog::buildCentralPanel(QVBoxLayout * /*unused*/)
 	connect(m_italicCheck, &QCheckBox::toggled, this, &FontDialog::onItalicChanged);
 	connect(m_colorButton, &QPushButton::clicked, this, &FontDialog::onColorClicked);
 }
+
+void FontDialog::populateTree()
+{
+	m_elementTree->clear();
+
+	for (int i = 0; i < m_elements.size(); ++i) {
+		const SyntaxElementStyle &e = m_elements[i];
+
+		auto *item = new QTreeWidgetItem(m_elementTree);
+		item->setText(0, e.title);
+		item->setData(0, Qt::UserRole, i); // индекс элемента
+
+		// Вторая колонка заполняется отдельно
+		refreshElementSummary(item, i);
+	}
+}
+
+void FontDialog::refreshElementSummary(QTreeWidgetItem *item, int elementIndex)
+{
+	if (!item)
+		return;
+	if(elementIndex < 0)
+		elementIndex = item->data(0, Qt::UserRole).toInt();
+	if (elementIndex < 0 || elementIndex >= m_elements.size())
+		return;
+
+	const SyntaxElementStyle &e = m_elements[elementIndex];
+
+	// --- Атрибуты ---
+	QStringList attrs;
+	if (e.bold)   attrs << "bold";
+	if (e.italic) attrs << "italic";
+	if (attrs.isEmpty()) attrs << "regular";
+	const QString attrStr = attrs.join(", ");
+
+	// --- Размер шрифта ---
+	// Реальный размер берём из FontManager (после калибровки),
+	// а не из m_elements — там его нет.
+	QString sizeStr;
+	if (m_fontManager && elementIndex < m_fontManager->fontCount()) {
+		const FontEntry &fe = m_fontManager->getFontEntry(elementIndex);
+	//	if (fe.pointSize > 0)
+	//		sizeStr = QString("%1 pt").arg(fe.pointSize);
+	//	else 
+		if (fe.font.pixelSize() > 0)
+			sizeStr = QString("%1 px").arg(fe.font.pixelSize());
+	}
+
+	// --- Цвет ---
+	// Имя цвета, если оно есть; иначе hex-значение
+	QString colorStr = e.color.name(QColor::HexRgb);
+	const QString colorName = e.color.name();
+	if (colorName != colorStr) // Qt вернул человекочитаемое имя
+		colorStr = QString("%1 (%2)").arg(colorName, colorStr);
+
+	// --- Собираем строку ---
+	// Пример: Consolas, bold, 11 pt, #0000cc
+	QString summary = e.fontFamily;
+	if (!attrStr.isEmpty())
+		summary += ", " + attrStr;
+	if (!sizeStr.isEmpty())
+		summary += ", " + sizeStr;
+	if (!colorStr.isEmpty())
+		summary += ", " + colorStr;
+
+	item->setText(1, summary);
+
+	// Подкрашиваем текст цветом самого стиля — это удобно визуально.
+	// Но цвет текста не должен мешать читаемости — если он слишком светлый
+	// на светлом фоне, Qt сам не поправит. Поэтому оставляем чёрный,
+	// а цвет показываем квадратиком в третьей колонке.
+
+	// Опционально: квадратик цвета в начале второй колонки
+	QPixmap swatch(12, 12);
+	swatch.fill(e.color);
+	item->setIcon(1, QIcon(swatch));
+}
+
 
 void FontDialog::buildBottomPanel(QVBoxLayout *root)
 {
@@ -141,14 +243,40 @@ void FontDialog::buildBottomPanel(QVBoxLayout *root)
 	root->addWidget(box);
 }
 
+void FontDialog::updateColorButton()
+{
+	if (!m_colorButton)
+		return;
+
+	const int idx = m_currentItem ? m_currentItem->data(0, Qt::UserRole).toInt() : -1;
+	const QColor c = (idx >= 0)
+		? m_elements[idx].color
+		: palette().color(QPalette::Button);
+
+	// Рисуем квадратик с рамкой, чтобы светлые цвета были видны
+	const int    m_inset = 4;
+	const QRect r = m_colorButton->rect().adjusted(m_inset, m_inset, -m_inset, -m_inset);
+	const QSize s = QSize(60, r.height());
+	QPixmap pm(s);
+	pm.fill(c);
+	
+	m_colorButton->setIcon(QIcon(pm));
+	m_colorButton->setIconSize(s);
+	m_colorButton->setText(QString());
+	m_colorButton->setToolTip(
+		QString("Text color: %1").arg(c.name(QColor::HexRgb)));
+
+	// Сбрасываем возможный stylesheet от предыдущего варианта
+	m_colorButton->setStyleSheet(QString());
+}
+
 // ---------------------------------------------------------------- Model <-> UI
 
 void FontDialog::loadFromModel()
 {
 	refreshFontList();
-	refreshElementListLabels();
-	if (!m_elements.isEmpty())
-		m_elementList->setCurrentRow(0);
+	populateTree();
+	updateColorButton();
 	refreshPreview();
 }
 
@@ -161,19 +289,6 @@ void FontDialog::refreshFontList()
 		if (QFontDatabase().isFixedPitch(fam))
 			m_fontCombo->addItem(fam);
 	}
-	// Добавим текущий, если его вдруг нет в списке (бывает при кастомных шрифтах)
-	if (m_currentRow >= 0) {
-		const QString cur = m_elements[m_currentRow].fontFamily;
-		if (m_fontCombo->findText(cur) < 0 && !cur.isEmpty())
-			m_fontCombo->addItem(cur);
-	}
-}
-
-void FontDialog::refreshElementListLabels()
-{
-	m_elementList->clear();
-	for (const auto &e : m_elements)
-		m_elementList->addItem(e.title);
 }
 
 void FontDialog::refreshPreview()
@@ -186,29 +301,26 @@ void FontDialog::refreshPreview()
 
 // ---------------------------------------------------------------- Slots
 
-void FontDialog::onElementSelected(int row)
+void FontDialog::onElementSelected(QTreeWidgetItem *current,
+	QTreeWidgetItem *previous)
 {
-	if (row < 0 || row >= m_elements.size()) {
-		m_currentRow = -1;
-		m_editorBox->setEnabled(false);
-		return;
-	}
+	Q_UNUSED(previous);
 
-	m_currentRow = row;
+	m_currentItem = current;
+	const int idx = m_currentItem->data(0, Qt::UserRole).toInt();
+
 	m_editorBox->setEnabled(true);
 
-	const SyntaxElementStyle &e = m_elements[row];
+	const SyntaxElementStyle &e = m_elements[idx];
 
-	// Обновляем список шрифтов так, чтобы он содержал текущий
-	refreshFontList();
-
+	// --- Синхронизируем правую панель без эмиссии сигналов ---	
 	m_fontCombo->blockSignals(true);
-	int idx = m_fontCombo->findText(e.fontFamily);
-	if (idx < 0 && !e.fontFamily.isEmpty()) {
+	int comboIdx = m_fontCombo->findText(e.fontFamily);
+	if (comboIdx < 0 && !e.fontFamily.isEmpty()) {
 		m_fontCombo->addItem(e.fontFamily);
-		idx = m_fontCombo->findText(e.fontFamily);
+		comboIdx = m_fontCombo->findText(e.fontFamily);
 	}
-	m_fontCombo->setCurrentIndex(idx);
+	m_fontCombo->setCurrentIndex(comboIdx);
 	m_fontCombo->blockSignals(false);
 
 	m_boldCheck->blockSignals(true);
@@ -219,65 +331,59 @@ void FontDialog::onElementSelected(int row)
 	m_italicCheck->setChecked(e.italic);
 	m_italicCheck->blockSignals(false);
 
-	refreshPreview();
+	updateColorButton();
+	refreshPreview();	
 }
 
 void FontDialog::onFontFamilyChanged(const QString &family)
 {
-	if (m_currentRow < 0) return;
-	m_elements[m_currentRow].fontFamily = family;
-	applyCurrentElementToFontManager();
+	if (!m_currentItem) return;
+	const int idx = m_currentItem->data(0, Qt::UserRole).toInt();
+
+	m_elements[idx].fontFamily = family;
+	
+	refreshElementSummary(m_currentItem, idx);
 	refreshPreview();
 }
 
 void FontDialog::onBoldChanged(bool checked)
 {
-	if (m_currentRow < 0) return;
-	m_elements[m_currentRow].bold = checked;
-	applyCurrentElementToFontManager();
+	if (!m_currentItem) return;
+	const int idx = m_currentItem->data(0, Qt::UserRole).toInt();
+
+	SyntaxElementStyle &e = m_elements[idx];
+	e.bold = checked;
+	m_fontManager->setFont(idx, e.fontFamily, e.bold, e.italic);
+	
+	refreshElementSummary(m_currentItem, idx);
 	refreshPreview();
 }
 
 void FontDialog::onItalicChanged(bool checked)
 {
-	if (m_currentRow < 0) return;
-	m_elements[m_currentRow].italic = checked;
-	applyCurrentElementToFontManager();
+	if (!m_currentItem) return;
+	const int idx = m_currentItem->data(0, Qt::UserRole).toInt();
+
+	m_elements[idx].italic = checked;
+	
+	refreshElementSummary(m_currentItem, idx);
 	refreshPreview();
 }
 
 void FontDialog::onColorClicked()
 {
-	if (m_currentRow < 0) return;
+	if (!m_currentItem) return;
+	const int idx = m_currentItem->data(0, Qt::UserRole).toInt();
+
 	const QColor c = QColorDialog::getColor(
-		m_elements[m_currentRow].color, this, "Text color");
+		m_elements[idx].color, this, "Text color");
 	if (!c.isValid()) return;
-	m_elements[m_currentRow].color = c;
+	m_elements[idx].color = c;
+
+	updateColorButton();
+	
+	refreshElementSummary(m_currentItem, idx);
 	refreshPreview();
-}
-
-void FontDialog::applyCurrentElementToFontManager()
-{
-	// Индекс шрифта в FontManager соответствует индексу элемента
-	// (если вы держите их синхронно — см. ниже)
-	const SyntaxElementStyle &e = m_elements[m_currentRow];
-
-	if (!m_fontManager->setFont(m_currentRow, e.fontFamily, e.bold, e.italic)) {
-		// Калибровка не удалась — откатываем UI к прежнему состоянию
-		// или показываем предупреждение.
-		m_metricsLabel->setText(
-			tr("Warning: cannot calibrate \"%1\" to %2 px cell width.")
-			.arg(e.fontFamily)
-			.arg(m_fontManager->getCellWidth()));
-		return;
-	}
-
-	// Обновляем метрики в лейбле
-	const GlyphMetrics gm = m_fontManager->getGlyphMetrics(m_currentRow);
-	m_metricsLabel->setText(
-		tr("Width: %1, Height: %2, Ascent: %3, Descent: %4")
-		.arg(gm.width).arg(gm.height)
-		.arg(gm.ascent).arg(gm.descent));
 }
 
 void FontDialog::onCellWidthChanged(int w)

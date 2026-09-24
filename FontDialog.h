@@ -16,6 +16,8 @@ class QGroupBox;
 class StylePreview;
 class QVBoxLayout;
 class QHBoxLayout;
+class QTreeWidget;
+class QTreeWidgetItem;
 
 class FontDialog : public QDialog
 {
@@ -32,11 +34,13 @@ public:
 	QVector<SyntaxElementStyle> elements() const;
 
 private slots:
-	void onElementSelected(int row);
+	void onElementSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
+	
 	void onFontFamilyChanged(const QString &family);
 	void onBoldChanged(bool checked);
 	void onItalicChanged(bool checked);
 	void onColorClicked();
+
 	void onCalculateHeight();
 	void onCellWidthChanged(int w);
 	void onCellHeightChanged(int h);
@@ -47,20 +51,13 @@ private:
 	void buildTopPanel(QVBoxLayout *root);
 	void buildCentralPanel(QVBoxLayout *root);
 	void buildBottomPanel(QVBoxLayout *root);
-	void applyCurrentElementToFontManager();
-
+	void populateTree();
+	void refreshElementSummary(QTreeWidgetItem *item, int elementIndex = -1);
 	void loadFromModel();
-	void saveToModel();
+	void updateColorButton();
 	void refreshFontList();
 	void refreshPreview();
-	void refreshElementListLabels();
-
-	// ѕроверка: влезает ли текущий стиль в знакоместо
-	bool validateElement(const SyntaxElementStyle &s, QString *why = nullptr) const;
-
-	// —обрать QFont из стил€ (с калибровкой через FontManager)
-	QFont buildCalibratedFont(const SyntaxElementStyle &s) const;
-
+	
 	FontManager *m_fontManager;
 	QVector<SyntaxElementStyle> m_elements;
 
@@ -69,8 +66,9 @@ private:
 	QSpinBox *m_cellHeightSpin = nullptr;
 	QPushButton *m_calcHeightBtn = nullptr;
 
-	// Ћева€ панель
-	QListWidget *m_elementList = nullptr;
+	// Ћева€ панель Ч дерево
+	QTreeWidget *m_elementTree = nullptr;
+	QTreeWidgetItem *m_currentItem = nullptr;
 
 	// ѕрава€ панель Ч редактор элемента
 	QGroupBox   *m_editorBox = nullptr;
@@ -82,6 +80,4 @@ private:
 
 	// Ќижн€€ панель Ч превью
 	StylePreview *m_preview = nullptr;
-
-	int m_currentRow = -1;
 };

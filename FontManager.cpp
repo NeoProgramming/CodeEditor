@@ -30,7 +30,7 @@ int FontManager::addFont(const QString &family, bool bold, bool italic)
 	entry.family = family;
 	entry.bold = bold;
 	entry.italic = italic;
-	entry.pointSize = 10; // Заглушка
+//	entry.pointSize = 10; // Заглушка
 	
 	if (!calibrateFont(entry)) {
 		qWarning() << "Failed to calibrate font:" << family;
@@ -56,7 +56,7 @@ bool FontManager::setFont(int index, const QString &family, bool bold, bool ital
 	candidate.family = family;
 	candidate.bold = bold;
 	candidate.italic = italic;
-	candidate.pointSize = 10; // заглушка, реальное значение выставит calibrateFont
+//	candidate.pointSize = 10; // заглушка, реальное значение выставит calibrateFont
 
 	if (!calibrateFont(candidate))
 		return false; // калибровка не удалась — оставляем старую запись
@@ -85,14 +85,6 @@ GlyphMetrics FontManager::getGlyphMetrics(int index) const
 		return GlyphMetrics{ 0, 0, 0, 0 };
 	}
 	return m_fonts[index].metrics;
-
-//	QFontMetrics metrics(m_fonts[index].font);
-//	GlyphMetrics gm;
-//	gm.width = metrics.horizontalAdvance('W');
-//	gm.height = metrics.height();
-//	gm.ascent = metrics.ascent();
-//	gm.descent = metrics.descent();
-//	return gm;
 }
 
 QFont FontManager::getFont(int index) const 
@@ -124,7 +116,8 @@ int FontManager::recommendedLineHeight() const
 
 bool FontManager::calibrateFont(FontEntry &entry) 
 {
-	// Ищем размер моноширинного шрифта, при котором ширина символа в точности равен требуемому
+	// Ищем размер моноширинного шрифта, при котором ширина символа 
+	// с заданными параметрами (family, bold, italic...) в точности равна требуемой
 
 	QFont baseFont(entry.family);
 	baseFont.setBold(entry.bold);
@@ -132,13 +125,13 @@ bool FontManager::calibrateFont(FontEntry &entry)
 	baseFont.setStyleHint(QFont::Monospace);
 	baseFont.setFixedPitch(true);
 
+	// локальная лямбда, она вызывается дальше для проверки шрифтов
 	auto tryFont = [&](const QFont &f) -> bool {
 		QFontMetrics fm(f);
 		const int w = fm.horizontalAdvance(QLatin1Char('M'));
 		const int h = fm.height();
-		if (w == m_cellWidth && h <= m_cellHeight) {
+		if (w == m_cellWidth) {
 			entry.font = f;
-			entry.pointSize = f.pointSize(); // может быть -1, если задан pixelSize
 			entry.metrics = { w, h, fm.ascent(), fm.descent() };
 			return true;
 		}
