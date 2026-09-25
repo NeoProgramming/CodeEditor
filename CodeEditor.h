@@ -25,6 +25,7 @@ public:
 	void lineNumberAreaPaintEvent(QPaintEvent *event);
 	int lineNumberAreaWidth() const;
 
+	void applyDefaultFont();
 protected:
 	void resizeEvent(QResizeEvent *event) override;
 
@@ -37,7 +38,7 @@ private:
 	Highlighter  *m_highlighter = nullptr;
 	FixedHeightLayout *m_fixedLayout = nullptr;
 	FontManager  *m_fontManager = nullptr;
-	LineNumberArea *lineNumberArea = nullptr;
+	LineNumberArea *m_lineNumberArea = nullptr;
 };
 
 // -------- Вспомогательный виджет для полосы с номерами строк --------

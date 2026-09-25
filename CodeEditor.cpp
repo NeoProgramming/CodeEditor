@@ -14,29 +14,32 @@ CodeEditor::CodeEditor(FontManager *fontManager,
 	: QPlainTextEdit(parent)
 	, m_fontManager(fontManager)
 {
-	// Моноширинный шрифт
-	QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-	font.setPointSize(11);
-	setFont(font);
+	// 1. Моноширинный шрифт виджета — берём из FontManager,
+    //    а если там пусто, падаем на системный.
+	if (m_fontManager && m_fontManager->fontCount() > 0) {
+		setFont(m_fontManager->getFont(ELEM_DEFAULT));
+	}
+	else {
+		QFont fallback = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+		setFont(fallback);
+	}
 
-	// Подменяем layout документа на кастомный
-	m_fixedLayout = new FixedHeightLayout(document());
-
-	// Вычисляем и фиксируем высоту строки по моноширинному шрифту
-	QFontMetricsF fm(font);
-	qreal lineHeight = qCeil(fm.lineSpacing());
-	m_fixedLayout->setFixedLineHeight(lineHeight);
-
-	document()->setDocumentLayout(m_fixedLayout);
-	
-
-	// Отступы и табуляция
-	setTabStopDistance(4 * fontMetrics().horizontalAdvance(' '));
+	// 2. Режим без переноса строк
 	setLineWrapMode(QPlainTextEdit::NoWrap);
 
-	// Полоса с номерами строк
-	lineNumberArea = new LineNumberArea(this);
+	// 3. Подменяем layout документа на кастомный.
+	//    Высота будет установлена позже, в onFontsChanged().
+	m_fixedLayout = new FixedHeightLayout(document());
+	document()->setDocumentLayout(m_fixedLayout);
 
+	// 4. Дефолтный шрифт документа — до создания Highlighter
+	//    и до любого текста. Нужен, чтобы пустые блоки
+	//    имели правильную высоту.
+	applyDefaultFont();
+	
+	// 5. Полоса с номерами строк
+	m_lineNumberArea = new LineNumberArea(this);
+	
 	connect(this, &CodeEditor::blockCountChanged,
 		this, &CodeEditor::updateLineNumberAreaWidth);
 	connect(this, &CodeEditor::updateRequest,
@@ -47,7 +50,10 @@ CodeEditor::CodeEditor(FontManager *fontManager,
 	updateLineNumberAreaWidth(0);
 	highlightCurrentLine();
 
-	// Подсветка синтаксиса C++
+	// 6. Табы, высота строки, перерисовка — всё в одном месте
+	onFontsChanged();
+
+	// 7. Highlighter — последним, когда всё остальное готово
 	m_highlighter = new Highlighter(document(), m_fontManager, elements, this);
 }
 
@@ -65,6 +71,8 @@ void CodeEditor::onFontsChanged()
 		const int cellW = m_fontManager->getCellWidth();
 		const int tabCols = 4;  // сколько знакомест занимает один таб
 		setTabStopDistance(static_cast<qreal>(cellW * tabCols));
+
+		applyDefaultFont();
 	}
 	viewport()->update();
 }
@@ -89,10 +97,10 @@ void CodeEditor::updateLineNumberAreaWidth(int /* newBlockCount */)
 void CodeEditor::updateLineNumberArea(const QRect &rect, int dy)
 {
 	if (dy)
-		lineNumberArea->scroll(0, dy);
+		m_lineNumberArea->scroll(0, dy);
 	else
-		lineNumberArea->update(0, rect.y(),
-			lineNumberArea->width(), rect.height());
+		m_lineNumberArea->update(0, rect.y(),
+			m_lineNumberArea->width(), rect.height());
 
 	if (rect.contains(viewport()->rect()))
 		updateLineNumberAreaWidth(0);
@@ -103,7 +111,7 @@ void CodeEditor::resizeEvent(QResizeEvent *event)
 	QPlainTextEdit::resizeEvent(event);
 
 	QRect cr = contentsRect();
-	lineNumberArea->setGeometry(
+	m_lineNumberArea->setGeometry(
 		QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
 }
 
@@ -127,7 +135,7 @@ void CodeEditor::highlightCurrentLine()
 
 void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 {
-	QPainter painter(lineNumberArea);
+	QPainter painter(m_lineNumberArea);
 	painter.fillRect(event->rect(), QColor(240, 240, 240));
 
 	QTextBlock block = firstVisibleBlock();
@@ -141,7 +149,7 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 			QString number = QString::number(blockNumber + 1);
 			painter.setPen(Qt::darkGray);
 			painter.drawText(0, top,
-				lineNumberArea->width() - 6,
+				m_lineNumberArea->width() - 6,
 				fontMetrics().height(),
 				Qt::AlignRight, number);
 		}
@@ -151,4 +159,25 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 		bottom = top + static_cast<int>(blockBoundingRect(block).height());
 		++blockNumber;
 	}
+}
+
+void CodeEditor::applyDefaultFont()
+{
+	if (!m_fontManager) return;
+
+	// Ищем шрифт с максимальной высотой
+	QFont tallest;
+	int maxH = 0;
+	for (int i = 0; i < m_fontManager->fontCount(); ++i) {
+		const FontEntry &e = m_fontManager->getFontEntry(i);
+		if (e.font.family().isEmpty()) continue;
+		const int h = QFontMetrics(e.font).height();
+		if (h > maxH) {
+			maxH = h;
+			tallest = e.font;
+		}
+	}
+
+	if (maxH > 0)
+		document()->setDefaultFont(tallest);
 }
