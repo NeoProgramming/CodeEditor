@@ -3,6 +3,7 @@
 #include "fontmanager.h"
 
 #include <QPainter>
+#include <QSet>
 
 StylePreview::StylePreview(QWidget *parent)
 	: QWidget(parent)
@@ -14,6 +15,19 @@ StylePreview::StylePreview(QWidget *parent)
 	setPalette(p);
 }
 
+void StylePreview::setFontManager(FontManager *fontManager)
+{
+	m_fontManager = fontManager;
+	updateGeometry();
+	update();
+}
+
+void StylePreview::refresh()
+{
+	updateGeometry();
+	update();
+}
+
 void StylePreview::setData(const QVector<SyntaxElementStyle> &elements,
 	int cellWidth, int cellHeight,
 	FontManager *fontManager)
@@ -23,111 +37,75 @@ void StylePreview::setData(const QVector<SyntaxElementStyle> &elements,
 	m_cellH = qMax(1, cellHeight);
 	m_fontManager = fontManager;
 
-	rebuildSample();
 	update();
 }
 
-void StylePreview::rebuildSample()
-{
-	// Здесь мы заранее задаём «раскраску» образца:
-	// какие фрагменты каким синтаксическим элементам соответствуют.
-	// Это не парсер, а фиксированный сценарий для превью.
 
-	m_sample.clear();
-
-	auto add = [this](const QString &text, const QString &id) {
-		int idx = 0;
-		for (int i = 0; i < m_elements.size(); ++i) {
-			if (m_elements[i].id == id) { idx = i; break; }
-		}
-		m_sample.append({ text, idx });
-	};
-
-	add("// Sample: ", "comment");
-	add("int", "keyword");
-	add(" ", "default");
-	add("value", "function");
-	add(" = ", "default");
-	add("42", "number");
-	add(";", "default");
-	add("\n", "default");
-
-	add("#include", "preproc");
-	add(" <string>", "string");
-	add("\n", "default");
-
-	add("asm { mov eax, 1 }", "asm");
-	add("\n", "default");
-	add("$script: x = 1 + 2", "script");
-	add("\n", "default");
-	add("{\"k\": \"v\", \"n\": 1}", "json");
-	add("\n", "default");
-	add("<root><item/></root>", "xml");
-	add("\n", "default");
-	add("`(a b c)", "quasi");
-	add("\n", "default");
-	add("MACRO(x)", "macro");
-	add("\n", "default");
-	add("syntax-rule", "smacro");
-	add("\n", "default");
-}
 
 void StylePreview::paintEvent(QPaintEvent * /*event*/)
 {
 	QPainter p(this);
 	p.fillRect(rect(), palette().color(QPalette::Window));
 
-	if (!m_fontManager) return;
+	if (!m_fontManager || m_fontManager->fontCount() == 0)
+		return;
 
-	// Строим карту «id -> откалиброванный QFont» для текущего размера ячейки.
-	// Превью использует временный FontManager, чтобы не менять основной.
-	FontManager local;
-	local.setCellSize(m_cellW, m_cellH);
+	// --- Собираем уникальные шрифты ---
+	struct Item {
+		FontKey key;
+		QFont   font;
+		int     index;
+	};
 
-	QVector<int> fontIndex(m_elements.size(), -1);
-	for (int i = 0; i < m_elements.size(); ++i) {
-		const auto &e = m_elements[i];
-		fontIndex[i] = local.addFont(e.fontFamily, e.bold, e.italic);
+	QVector<Item> unique;
+	QSet<QString> seen;
+
+	for (int i = 0; i < m_fontManager->fontCount(); ++i) {
+		const FontEntry &e = m_fontManager->getFontEntry(i);
+
+		if (e.font.family().isEmpty())
+			continue;
+
+		FontKey k{ e.family, e.bold, e.italic };
+
+		const QString serialized = QString("%1|%2|%3")
+			.arg(k.family)
+			.arg(k.bold ? 1 : 0)
+			.arg(k.italic ? 1 : 0);
+		if (seen.contains(serialized))
+			continue;
+		seen.insert(serialized);
+
+		unique.append({ k, e.font, i });
 	}
 
-	// Отрисовка: проходим по сегментам, каждый символ рисуем в своей ячейке.
-	int x = 4;
-	int y = 4;
-	const int top = y;
+	// --- Рисуем образец + имя шрифта для каждого ---
+	const int marginX = 8;
+	const int marginY = 8;
+	const int lineGap = 2;
 
-	// Фон под всю знакоместную сетку
-	// (можно включить для отладки)
-	// p.setPen(QColor(230,230,230));
-	// ...
+	int y = marginY;
 
-	for (const Segment &seg : m_sample) {
-		const SyntaxElementStyle &style = m_elements[seg.elementIndex];
-		QFont f = local.getFont(fontIndex[seg.elementIndex]);
-		if (f.family().isEmpty())
-			f = font();
+	for (const Item &item : unique) {
+		const QFont &f = item.font;
+		QFontMetrics fm(f);
 
-		// Задаём высоту ячейки вручную — шрифт уже откалиброван под ширину
-		f.setPixelSize(qMax(1, m_cellH - 2)); // небольшой внутренний отступ
+		const int lineH = fm.height();
+
+		// Собираем имя шрифта
+		QString label = item.key.family;
+		if (item.key.bold)   label += " bold";
+		if (item.key.italic) label += " italic";
+		label += QString(" (%1 px)").arg(f.pixelSize());
+
+		// Одна строка: образец + пробел + имя шрифта
+		const QString line = m_sample + "  " + label;
 
 		p.setFont(f);
-		p.setPen(style.color);
+		p.setPen(palette().color(QPalette::WindowText));
+		p.drawText(marginX, y, width() - 2 * marginX, lineH,
+			Qt::AlignLeft | Qt::AlignVCenter, line);
 
-		for (QChar ch : seg.text) {
-			if (ch == QLatin1Char('\n')) {
-				x = 4;
-				y += m_cellH;
-				continue;
-			}
-			// Рисуем символ по центру знакоместа
-			const QRect cell(x, y, m_cellW, m_cellH);
-			p.drawText(cell, Qt::AlignCenter, QString(ch));
-			x += m_cellW;
-		}
+		y += lineH + lineGap;
 	}
-
-	// Рамка области
-	p.setPen(QColor(180, 180, 180));
-	p.drawRect(rect().adjusted(0, 0, -1, -1));
-
-	Q_UNUSED(top);
 }

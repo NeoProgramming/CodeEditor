@@ -35,8 +35,7 @@ private:
 
 	CodeEditor   *editor = nullptr;
 	FontManager  *m_fontManager = nullptr;
-	Highlighter  *m_highlighter = nullptr;
-
+	
 	QString currentFile;
 
 	// Текущее состояние стилей и соответствие "элемент -> шрифт"

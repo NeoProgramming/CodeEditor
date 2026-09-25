@@ -1,0 +1,106 @@
+// ============================================================
+// Demo file for the pixel-grid code editor
+// Every syntax element is used at least once.
+// Many lines mix several elements to test the fixed cell grid.
+// ============================================================
+
+#include <iostream>
+#include <string>
+#include <vector>
+
+#define MAX_ITEMS 128
+#define DEBUG_PRINT(x) std::cout << x << std::endl
+
+namespace Demo {
+
+// --- Basic types and keywords in one line ---
+class Widget : public BaseWidget {
+public:
+    Widget(int w, int h) : width(w), height(h) {}
+    virtual ~Widget() {}
+
+    // Mixed line: type, function, number, string, char
+    std::string describe() const { return "Widget " + std::to_string(width) + 'x' + std::to_string(height); }
+
+    // Mixed line: keyword, function, type, comment at the end
+    bool resize(int newW, int newH) { width = newW; height = newH; return true; } // inline comment
+
+private:
+    int width  = 0;
+    int height = 0;
+};
+
+} // namespace Demo
+
+// ============================================================
+// Inserts: assembly, script, JSON, XML, quasiquote, macros
+// ============================================================
+
+void demo_asm()
+{
+    asm { mov eax, 1; add eax, ebx; ret }
+    asm "nop; nop; nop"
+}
+
+void demo_script()
+{
+    $script: let x = 1 + 2;
+    $script: print("hello from script");
+}
+
+void demo_json()
+{
+    auto cfg = { "name": "editor", "width": 80, "height": 25 };
+}
+
+void demo_xml()
+{
+    auto doc = <root><item id="1"/><item id="2"/></root>;
+}
+
+void demo_quasi()
+{
+    auto expr = `(a b c);
+    auto nested = `(lambda (x) (+ x 1));
+}
+
+// Lexical macro: uppercase name followed by (...)
+LEXICAL_MACRO(a, b);
+LEXICAL_MACRO(x + y, z);
+
+// Syntactic macro: syntax-rule
+syntax-rule(my-rule, pattern, template);
+syntax-rule(swap, (a b), (b a));
+
+// ============================================================
+// Multi-line comment block
+// ============================================================
+
+/*
+ * This is a block comment.
+ * It spans several lines.
+ * Inside it, keywords like int and class are NOT highlighted.
+ * Strings like "this" and numbers like 42 are also ignored.
+ */
+
+// ============================================================
+// Edge cases for the grid
+// ============================================================
+
+int    tabbed      = 1;	// tab before comment
+int    moreTabs    = 2;	// two	 tabs	 inside
+int    mixed       = 3; // spaces and	tab
+
+// The next line is intentionally empty:
+
+// The next line has only spaces:
+   
+// Mixed widths in one line:
+int a = 1; char b = 'x'; std::string c = "str"; double d = 3.14;
+
+// Very long line to test horizontal scrolling and tab stops:
+int veryLongVariableName = 1234567890 + 9876543210 + 1111111111 + 2222222222;
+
+// ============================================================
+// End of demo
+// ============================================================

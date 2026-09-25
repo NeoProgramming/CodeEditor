@@ -5,26 +5,29 @@
 #include <QPainter>
 #include <QTextBlock>
 #include <QtMath> 
-#include "FixedHeightLayout.h"
 
-CodeEditor::CodeEditor(QWidget *parent)
+#include "FixedHeightLayout.h"
+#include "FontManager.h"
+
+CodeEditor::CodeEditor(FontManager *fontManager,
+	const QVector<SyntaxElementStyle> &elements, QWidget *parent)
 	: QPlainTextEdit(parent)
+	, m_fontManager(fontManager)
 {
 	// Моноширинный шрифт
 	QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
 	font.setPointSize(11);
 	setFont(font);
-	   
 
 	// Подменяем layout документа на кастомный
-	auto *customLayout = new FixedHeightLayout(document());
+	m_fixedLayout = new FixedHeightLayout(document());
 
 	// Вычисляем и фиксируем высоту строки по моноширинному шрифту
 	QFontMetricsF fm(font);
 	qreal lineHeight = qCeil(fm.lineSpacing());
-	customLayout->setFixedLineHeight(lineHeight);
+	m_fixedLayout->setFixedLineHeight(lineHeight);
 
-	document()->setDocumentLayout(customLayout);
+	document()->setDocumentLayout(m_fixedLayout);
 	
 
 	// Отступы и табуляция
@@ -45,7 +48,25 @@ CodeEditor::CodeEditor(QWidget *parent)
 	highlightCurrentLine();
 
 	// Подсветка синтаксиса C++
-	new Highlighter(document());
+	m_highlighter = new Highlighter(document(), m_fontManager, elements, this);
+}
+
+void CodeEditor::setSyntaxStyles(const QVector<SyntaxElementStyle> &elements)
+{
+	if (m_highlighter)
+		m_highlighter->setStyles(elements);
+}
+
+void CodeEditor::onFontsChanged()
+{
+	if (m_fixedLayout && m_fontManager) {
+		const qreal h = m_fontManager->recommendedLineHeight();
+		m_fixedLayout->setFixedLineHeight(h);
+		const int cellW = m_fontManager->getCellWidth();
+		const int tabCols = 4;  // сколько знакомест занимает один таб
+		setTabStopDistance(static_cast<qreal>(cellW * tabCols));
+	}
+	viewport()->update();
 }
 
 int CodeEditor::lineNumberAreaWidth() const

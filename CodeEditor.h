@@ -1,13 +1,26 @@
 #pragma once
 
 #include <QPlainTextEdit>
+#include "syntaxstyle.h"
+
+class FontManager;
+class Highlighter;
+class LineNumberArea;
+class FixedHeightLayout;
 
 class CodeEditor : public QPlainTextEdit
 {
 	Q_OBJECT
 
 public:
-	explicit CodeEditor(QWidget *parent = nullptr);
+	explicit CodeEditor(FontManager *fontManager,
+		const QVector<SyntaxElementStyle> &elements, QWidget *parent = nullptr);
+
+	// Обновить стили подсветки
+	void setSyntaxStyles(const QVector<SyntaxElementStyle> &elements);
+
+	// Обновить высоту строки после смены шрифтов / размера ячейки
+	void onFontsChanged();
 
 	void lineNumberAreaPaintEvent(QPaintEvent *event);
 	int lineNumberAreaWidth() const;
@@ -21,7 +34,10 @@ private slots:
 	void highlightCurrentLine();
 
 private:
-	QWidget *lineNumberArea;
+	Highlighter  *m_highlighter = nullptr;
+	FixedHeightLayout *m_fixedLayout = nullptr;
+	FontManager  *m_fontManager = nullptr;
+	LineNumberArea *lineNumberArea = nullptr;
 };
 
 // -------- Вспомогательный виджет для полосы с номерами строк --------

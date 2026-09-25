@@ -38,24 +38,20 @@ class Highlighter : public QSyntaxHighlighter
 
 public:
 	explicit Highlighter(QTextDocument *doc,
-		FontManager *fontManager = nullptr,
+		FontManager *fontManager,
 		const QVector<SyntaxElementStyle> &elements = {},
 		QObject *parent = nullptr);
 
 	// Обновить стили и/или FontManager.
 	// Пересобирает кэш форматов и вызывает rehighlight().
-	void setStyles(const QVector<SyntaxElementStyle> &elements,
-		FontManager *fontManager);
-
-	// Доступ к текущим стилям (на случай, если нужно извне)
-	const QVector<SyntaxElementStyle> &styles() const { return m_elements; }
+	void setStyles(const QVector<SyntaxElementStyle> &elements);
 
 protected:
 	void highlightBlock(const QString &text) override;
 
 private:
 	// Пересобирает m_formatCache по m_elements и m_fontManager
-	void rebuildFormatCache();
+	void rebuildFormatCache(const QVector<SyntaxElementStyle> &elements);
 
 	// ---- Правила для однострочных токенов ----
 	struct Rule {
@@ -68,7 +64,6 @@ private:
 
 	// ---- Данные ----
 	FontManager                *m_fontManager = nullptr;
-	QVector<SyntaxElementStyle> m_elements;
 	QVector<QTextCharFormat>    m_formatCache; // индекс = индекс элемента
 	QVector<Rule>               m_rules;
 

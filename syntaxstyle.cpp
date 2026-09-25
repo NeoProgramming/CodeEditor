@@ -5,7 +5,7 @@ QVector<SyntaxElementStyle> defaultSyntaxElements()
 {
 	return {
 		{ "default",  "Default text",       "Consolas", false, false, QColor("#000000") },
-		{ "keyword",  "Keyword",            "Consolas", true,  false, QColor("#0000cc") },
+		{ "keyword",  "Keyword",            "Terminus (TTF)", false, false, QColor("#0000cc") },
 		{ "type",     "Type / Class",       "Consolas", false, false, QColor("#008080") },
 		{ "function", "Function",           "Consolas", false, false, QColor("#006400") },
 		{ "string",   "String literal",     "Consolas", false, false, QColor("#008000") },

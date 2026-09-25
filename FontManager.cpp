@@ -124,6 +124,7 @@ bool FontManager::calibrateFont(FontEntry &entry)
 	baseFont.setItalic(entry.italic);
 	baseFont.setStyleHint(QFont::Monospace);
 	baseFont.setFixedPitch(true);
+	baseFont.setKerning(false);
 
 	// локальная лямбда, она вызывается дальше для проверки шрифтов
 	auto tryFont = [&](const QFont &f) -> bool {
@@ -142,8 +143,18 @@ bool FontManager::calibrateFont(FontEntry &entry)
 	for (int px = 4; px <= 96; ++px) {
 		QFont f = baseFont;
 		f.setPixelSize(px);
-		if (tryFont(f))
+		if (tryFont(f)) {
+
+			QFontMetrics fm(f);
+			qDebug() << entry.family << "px" << px
+				<< "M" << fm.horizontalAdvance('M')
+				<< "i" << fm.horizontalAdvance('i')
+				<< "W" << fm.horizontalAdvance('W')
+				<< "1" << fm.horizontalAdvance('1')
+				<< "space" << fm.horizontalAdvance(' ');
+
 			return true;
+		}
 	}
 
 	return false;

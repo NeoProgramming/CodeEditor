@@ -9,11 +9,10 @@ Highlighter::Highlighter(QTextDocument *doc,
 	QObject *parent)
 	: QSyntaxHighlighter(doc)
 	, m_fontManager(fontManager)
-	, m_elements(elements)
 {
 	Q_UNUSED(parent);
 
-	rebuildFormatCache();
+	rebuildFormatCache(elements);
 	buildRules();
 
 	// Ќачальные/конечные маркеры многострочных комментариев
@@ -23,27 +22,22 @@ Highlighter::Highlighter(QTextDocument *doc,
 
 // ---------------------------------------------------------------- styles
 
-void Highlighter::setStyles(const QVector<SyntaxElementStyle> &elements,
-	FontManager *fontManager)
+void Highlighter::setStyles(const QVector<SyntaxElementStyle> &elements)
 {
-	m_elements = elements;
-	m_fontManager = fontManager;
-
-	rebuildFormatCache();
+	rebuildFormatCache(elements);
 	buildRules();      // правила не мен€ютс€, но пусть будут свежими
-
 	rehighlight();
 }
 
 // ---------------------------------------------------------------- format cache
 
-void Highlighter::rebuildFormatCache()
+void Highlighter::rebuildFormatCache(const QVector<SyntaxElementStyle> &elements)
 {
 	m_formatCache.clear();
-	m_formatCache.resize(m_elements.size());
+	m_formatCache.resize(elements.size());
 
-	for (int i = 0; i < m_elements.size(); ++i) {
-		const SyntaxElementStyle &e = m_elements[i];
+	for (int i = 0; i < elements.size(); ++i) {
+		const SyntaxElementStyle &e = elements[i];
 
 		QTextCharFormat fmt;
 		fmt.setForeground(e.color);
@@ -144,8 +138,12 @@ void Highlighter::buildRules()
 
 void Highlighter::highlightBlock(const QString &text)
 {
-	// 1. —брос состо€ни€ дл€ многострочных комментариев
+	// 0. —брос состо€ни€ дл€ многострочных комментариев
 	setCurrentBlockState(0);
+
+	// 1. —начала Ч дефолтный формат на весь блок
+	if (!m_formatCache.isEmpty() && m_formatCache.size() > ELEM_DEFAULT)
+		setFormat(0, text.length(), m_formatCache[ELEM_DEFAULT]);
 
 	// 2. ќднострочные правила
 	for (const Rule &rule : m_rules) {

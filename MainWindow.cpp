@@ -32,18 +32,11 @@ MainWindow::MainWindow(QWidget *parent)
 	// 3. Собираем пул шрифтов под этот набор
 	rebuildFontPool();
 
-	editor = new CodeEditor(this);
+	editor = new CodeEditor(m_fontManager, m_syntaxElements, this);
 	setCentralWidget(editor);
 	setWindowTitle("CodeEditor - Untitled");
 	resize(900, 600);
-
-	// 5. Подсветка — тоже использует FontManager и стили
-	m_highlighter = new Highlighter(editor->document());// ,
 	
-	//	m_fontManager,
-	//	m_syntaxElements,
-	
-
 	createActions();
 	createMenus();
 	createStatusBar();
@@ -52,7 +45,7 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(editor, &QPlainTextEdit::cursorPositionChanged, this, [this]() {
 		auto c = editor->textCursor();
 		statusBar()->showMessage(
-			QString("Строка: %1, Столбец: %2")
+			QString("Line: %1, Column: %2")
 			.arg(c.blockNumber() + 1)
 			.arg(c.positionInBlock() + 1));
 	});
@@ -215,7 +208,7 @@ void MainWindow::setCurrentFile(const QString &fileName)
 	QString shown = fileName.isEmpty()
 		? "Untitled"
 		: QFileInfo(fileName).fileName();
-	setWindowTitle(QString("CodeEditor — %1").arg(shown));
+	setWindowTitle(QString("CodeEditor - %1").arg(shown));
 }
 
 void MainWindow::chooseFont()
@@ -230,23 +223,26 @@ void MainWindow::chooseFont()
 	if (dlg.exec() != QDialog::Accepted)
 		return;
 
-	// 2. Применяем новый размер знакоместа
+	// 1. СНАЧАЛА обновляем FontManager
 	m_fontManager->setCellSize(dlg.cellWidth(), dlg.cellHeight());
 
-	// 3. Забираем обновлённые стили
+	// 2. ЗАТЕМ обновляем список стилей
 	m_syntaxElements = dlg.elements();
 
-	// 4. Пересобираем пул шрифтов под новые стили.
-	//    m_fontManager->clear() + addFont для каждого элемента.
+	// 3. ЗАТЕМ пересобираем пул шрифтов под новые стили
 	rebuildFontPool();
 
-	// 5. Обновляем подсветку — она должна знать новые QFont и цвета
-	m_highlighter->setStyles(m_syntaxElements, m_fontManager);
+	// 4. ТОЛЬКО ТЕПЕРЬ просим хайлайтер пересобрать кэш
+	editor->setSyntaxStyles(m_syntaxElements);
+
+	// 5. И обновляем layout
+	editor->onFontsChanged();
+
+			
 
 	// 6. Просим редактор пересчитать layout и перерисоваться
 //	editor->onFontsChanged();
 	editor->viewport()->update();
-
 }
 
 
