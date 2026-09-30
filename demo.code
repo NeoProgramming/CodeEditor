@@ -10,7 +10,7 @@
 
 #define MAX_ITEMS 128
 #define DEBUG_PRINT(x) std::cout << x << std::endl
-
+#define XML <xml v="1.0">hack</xml>
 namespace Demo {
 
 // --- Basic types and keywords in one line ---
