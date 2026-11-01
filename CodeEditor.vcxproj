@@ -85,31 +85,32 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="FontDialog.cpp" />
-    <ClCompile Include="FontManager.cpp" />
-    <ClCompile Include="Highlighter.cpp" />
-    <ClCompile Include="MainWindow.cpp" />
-    <ClCompile Include="StylePreview.cpp" />
-    <ClCompile Include="syntaxstyle.cpp" />
+    <ClCompile Include="src/FontDialog.cpp" />
+    <ClCompile Include="src/FontManager.cpp" />
+    <ClCompile Include="src/Highlighter.cpp" />
+    <ClCompile Include="src/MainWindow.cpp" />
+    <ClCompile Include="src/StylePreview.cpp" />
+    <ClCompile Include="src/syntaxstyle.cpp" />
+    <ClCompile Include="src/CodeEditor.cpp" />
+    <ClCompile Include="src/main.cpp" />
+    <ClCompile Include="src\EditorPane.cpp" />
+  </ItemGroup>
+  <ItemGroup>
     <QtRcc Include="CodeEditor.qrc" />
-    <QtMoc Include="CodeEditor.h" />
-    <ClCompile Include="CodeEditor.cpp" />
-    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <QtMoc Include="MainWindow.h" />
+    <QtMoc Include="src/MainWindow.h" />
+    <QtMoc Include="src/CodeEditor.h" />
+    <QtMoc Include="src/Highlighter.h" />
+    <QtMoc Include="src/FontManager.h" />
+    <QtMoc Include="src/FontDialog.h" />
+    <QtMoc Include="src/StylePreview.h" />
   </ItemGroup>
   <ItemGroup>
-    <QtMoc Include="Highlighter.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <QtMoc Include="FontManager.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="FixedHeightLayout.h" />
-    <QtMoc Include="FontDialog.h" />
-    <QtMoc Include="StylePreview.h" />
-    <ClInclude Include="syntaxstyle.h" />
+    <ClInclude Include="src/FixedHeightLayout.h" />
+    <ClInclude Include="src/syntaxstyle.h" />
+    <ClInclude Include="src\PrimaryState.h" />
+    <QtMoc Include="src\EditorPane.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')">

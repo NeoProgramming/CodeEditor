@@ -23,61 +23,70 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <QtMoc Include="src/CodeEditor.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <ClCompile Include="src/CodeEditor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <QtRcc Include="CodeEditor.qrc">
       <Filter>Resource Files</Filter>
     </QtRcc>
-    <QtMoc Include="CodeEditor.h">
-      <Filter>Header Files</Filter>
-    </QtMoc>
-    <ClCompile Include="CodeEditor.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="MainWindow.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Highlighter.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="FontManager.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="syntaxstyle.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="FontDialog.cpp">
-      <Filter>Header Files</Filter>
-    </ClCompile>
-    <ClCompile Include="StylePreview.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <QtMoc Include="MainWindow.h">
-      <Filter>Header Files</Filter>
-    </QtMoc>
-    <QtMoc Include="Highlighter.h">
-      <Filter>Header Files</Filter>
-    </QtMoc>
-    <QtMoc Include="FontManager.h">
-      <Filter>Header Files</Filter>
-    </QtMoc>
-    <QtMoc Include="FontDialog.h">
-      <Filter>Header Files</Filter>
-    </QtMoc>
-    <QtMoc Include="StylePreview.h">
+    <QtMoc Include="src\EditorPane.h">
       <Filter>Header Files</Filter>
     </QtMoc>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="FixedHeightLayout.h">
+    <ClCompile Include="src/main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src/MainWindow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src/Highlighter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src/FontManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src/syntaxstyle.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src/FontDialog.cpp">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src/StylePreview.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\EditorPane.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="src/MainWindow.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="src/Highlighter.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="src/FontManager.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="src/FontDialog.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="src/StylePreview.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src/FixedHeightLayout.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="syntaxstyle.h">
+    <ClInclude Include="src/syntaxstyle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PrimaryState.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
