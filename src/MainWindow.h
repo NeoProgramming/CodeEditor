@@ -7,6 +7,7 @@ class QAction;
 class QTabWidget;
 class FontManager;
 class EditorPane;
+class FolderTree;   // новый forward
 
 class MainWindow : public QMainWindow
 {
@@ -35,6 +36,9 @@ private slots:
 	void toggleDarkTheme(bool enabled);
 	void about();
 
+	void openFolder();
+	void openFileByPath(const QString &path);   // переиспользуется из openFile и из дерева
+
 private:
 	void createActions();
 	void createMenus();
@@ -51,11 +55,13 @@ private:
 
 	QTabWidget  *m_tabs = nullptr;
 	FontManager *m_fontManager = nullptr;
+	FolderTree *m_folderTree = nullptr;
 
 	QVector<SyntaxElementStyle> m_syntaxElements;
 
 	QAction *newAct;
 	QAction *openAct;
+	QAction *openFolderAct;
 	QAction *saveAct;
 	QAction *saveAsAct;
 	QAction *closeAct;

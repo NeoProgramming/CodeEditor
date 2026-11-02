@@ -3,6 +3,7 @@
 #include "FontManager.h"
 #include "FontDialog.h"
 #include "codeeditor.h"
+#include "FolderTree.h"
 
 #include <QAction>
 #include <QApplication>
@@ -36,6 +37,12 @@ MainWindow::MainWindow(QWidget *parent)
 	m_tabs->setDocumentMode(true);
 	setCentralWidget(m_tabs);
 
+	// Dock с деревом файлов
+	m_folderTree = new FolderTree(this);
+	addDockWidget(Qt::LeftDockWidgetArea, m_folderTree);
+	connect(m_folderTree, &FolderTree::openFileRequested,
+		this, &MainWindow::openFileByPath);
+
 	connect(m_tabs, &QTabWidget::currentChanged,
 		this, &MainWindow::onTabChanged);
 	connect(m_tabs, &QTabWidget::tabCloseRequested,
@@ -62,6 +69,10 @@ void MainWindow::createActions()
 	openAct = new QAction("&Open...", this);
 	openAct->setShortcut(QKeySequence::Open);
 	connect(openAct, &QAction::triggered, this, &MainWindow::openFile);
+
+	openFolderAct = new QAction("Open &Folder...", this);
+	connect(openFolderAct, &QAction::triggered,
+		this, &MainWindow::openFolder);
 
 	saveAct = new QAction("&Save", this);
 	saveAct->setShortcut(QKeySequence::Save);
@@ -154,6 +165,7 @@ void MainWindow::createMenus()
 	QMenu *fileMenu = menuBar()->addMenu("&File");
 	fileMenu->addAction(newAct);
 	fileMenu->addAction(openAct);
+	fileMenu->addAction(openFolderAct);
 	fileMenu->addAction(saveAct);
 	fileMenu->addAction(saveAsAct);
 	fileMenu->addSeparator();
@@ -231,6 +243,10 @@ void MainWindow::onTabChanged(int /*index*/)
 			QString("Line: %1, Column: %2")
 			.arg(c.blockNumber() + 1)
 			.arg(c.positionInBlock() + 1));
+
+		// Выделить файл в дереве, если он внутри корня
+		if (m_folderTree)
+			m_folderTree->selectFile(p->primaryState().filePath);
 	}
 }
 
@@ -251,18 +267,14 @@ void MainWindow::newFile()
 	addPaneTab(createPane());
 }
 
-void MainWindow::openFile()
+void MainWindow::openFileByPath(const QString &path)
 {
-	const QString fileName = QFileDialog::getOpenFileName(
-		this, "Open File", QString(),
-		"All Files (*.*);;C++ (*.cpp *.h *.hpp);;Python (*.py)");
-	if (fileName.isEmpty())
-		return;
+	if (path.isEmpty()) return;
 
-	// Уже открыт — переключимся
+	// Уже открыт?
 	for (int i = 0; i < m_tabs->count(); ++i) {
 		auto *p = qobject_cast<EditorPane *>(m_tabs->widget(i));
-		if (p && p->primaryState().filePath == fileName) {
+		if (p && p->primaryState().filePath == path) {
 			m_tabs->setCurrentIndex(i);
 			return;
 		}
@@ -270,13 +282,38 @@ void MainWindow::openFile()
 
 	auto *pane = createPane();
 	QString error;
-	if (!pane->loadIntoPrimary(fileName, &error)) {
+	if (!pane->loadIntoPrimary(path, &error)) {
 		QMessageBox::warning(this, "Error",
 			"Cannot open file:\n" + error);
 		pane->deleteLater();
 		return;
 	}
 	addPaneTab(pane);
+}
+
+void MainWindow::openFile()
+{
+	const QString fileName = QFileDialog::getOpenFileName(
+		this, "Open File",
+		m_folderTree->rootPath().isEmpty()
+		? QString()
+		: m_folderTree->rootPath(),
+		"All Files (*.*);;C++ (*.cpp *.h *.hpp);;Python (*.py)");
+	if (fileName.isEmpty())
+		return;
+	openFileByPath(fileName);
+}
+
+void MainWindow::openFolder()
+{
+	const QString dir = QFileDialog::getExistingDirectory(
+		this, "Open Folder",
+		m_folderTree->rootPath().isEmpty()
+		? QDir::homePath()
+		: m_folderTree->rootPath());
+	if (dir.isEmpty())
+		return;
+	m_folderTree->openFolder(dir);
 }
 
 bool MainWindow::saveFile()
