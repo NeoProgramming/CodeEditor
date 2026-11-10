@@ -12,11 +12,10 @@ class FontManager;
 // Второй редактор всегда read-only и никогда не участвует в Save.
 enum class SecondarySource
 {
-    None,            // второго редактора нет
-    Clipboard,       // снимок буфера обмена
-    RepositoryCopy,  // резервная копия из репозитория / VCS
-    Snapshot,        // снимок текущего файла на момент открытия diff
-    Other            // произвольный текст, вставленный программно
+	None,       // второго редактора нет
+	Version,    // показывает ~<timestamp> с диска
+	Current,    // показывает file.cpp (рабочий файл) в памяти
+	Buffer      // показывает вставленное из буфера (в памяти панели)
 };
 
 // Человекочитаемая подпись источника для заголовка вкладки.
@@ -46,17 +45,60 @@ public:
     SecondarySource  secondarySource() const { return m_secondarySource; }
     bool             isDiffMode()      const { return m_secondary != nullptr; }
 
+
+	// Показать версию с диска. filePath версии сохраняется в m_secondaryVersionPath.
+	void showVersion(const QString &versionPath);
+
+	// Показать текущий file.cpp в secondary (для "next за самую свежую").
+	void showCurrent();
+
+	// Показать буфер (в памяти панели). Если буфера нет - ничего не делает.
+	void showBuffer();
+
+	// Вставить из системного clipboard в буфер и показать его.
+	void pasteFromClipboard();
+
+	// Закрыть secondary.
+	void clearSecondary();
+
+
+	// ---- Версии (действия над файлами) ----
+
+	// Создать версию текущего primary.
+	bool createVersion(QString *error = nullptr);
+
+	// Принять версию, показанную в secondary, как рабочую.
+	// Если secondary показывает Buffer - записать buffer в file.cpp.
+	// Если secondary показывает Version - выполнить rename.
+	// Current/None - ничего не делает (false).
+	bool acceptSecondary(QString *error = nullptr);
+
+	// Удалить версию, показанную в secondary.
+	bool deleteSecondaryVersion(QString *error = nullptr);
+
+	// Удалить все версии file.cpp. Закрывает secondary, если оно показывает Version.
+	int  deleteAllVersions(QString *error = nullptr);
+
+	// Навигация по оси версий: [~старые ... ~свежие] -> Current.
+	void goPreviousVersion();
+	void goNextVersion();
+	bool canGoPrevious() const;
+	bool canGoNext() const;
+
+	// ---- I/O primary (без изменений) ----
+	bool loadIntoPrimary(const QString &path, QString *error = nullptr);
+	bool savePrimary(QString *error = nullptr);
+	bool savePrimaryAs(const QString &path, QString *error = nullptr);
+
+
+
     // Открыть/обновить второй редактор.
     // source == SecondarySource::None — закрыть diff-режим.
     void setSecondary(SecondarySource source,
                       const QString &text,
                       const QString &displayLabel = QString());
-    void clearSecondary();
 
-    // ---- I/O (только primary) ----
-    bool loadIntoPrimary(const QString &path, QString *error = nullptr);
-    bool savePrimary(QString *error = nullptr);                       // по текущему пути
-    bool savePrimaryAs(const QString &path, QString *error = nullptr);
+	  
 
     // Заголовок вкладки. primary.displayName() + (" *") + (" ↔ <source>").
     QString tabTitle() const;
@@ -68,11 +110,14 @@ public:
 signals:
     void titleChanged();
     void cursorPositionChanged(int line, int col);   // только primary
-
+	// Испускается при изменении состояния secondary (открыт/закрыт/сменил источник),
+	// чтобы MainWindow мог обновить enabled-состояние QAction.
+	void secondaryChanged();
 private:
     void connectPrimary();
     void connectSecondary();
     void updateTitle();
+	bool ensureSavedOrConfirm(QString *error);   // спросить Save/Discard/Cancel
 
     FontManager *m_fontManager = nullptr;
     QVector<SyntaxElementStyle> m_elements;
@@ -84,4 +129,8 @@ private:
     PrimaryState    m_primaryState;
     SecondarySource m_secondarySource = SecondarySource::None;
     QString         m_secondaryLabel;
+
+	QString m_secondaryVersionPath;  // путь к ~T, если secondarySource == Version
+	QString m_bufferText;            // вставленное из буфера, в памяти
+	bool    m_hasBuffer = false;
 };

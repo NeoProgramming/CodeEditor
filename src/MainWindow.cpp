@@ -2,6 +2,7 @@
 #include "EditorPane.h"
 #include "FontManager.h"
 #include "FontDialog.h"
+#include "VersionStore.h"
 #include "codeeditor.h"
 #include "FolderTree.h"
 
@@ -37,16 +38,17 @@ MainWindow::MainWindow(QWidget *parent)
 	m_tabs->setDocumentMode(true);
 	setCentralWidget(m_tabs);
 
+	connect(m_tabs, &QTabWidget::currentChanged,
+		this, &MainWindow::onTabChanged);
+	connect(m_tabs, &QTabWidget::tabCloseRequested,
+		this, &MainWindow::closeTab);
+
 	// Dock с деревом файлов
 	m_folderTree = new FolderTree(this);
 	addDockWidget(Qt::LeftDockWidgetArea, m_folderTree);
 	connect(m_folderTree, &FolderTree::openFileRequested,
 		this, &MainWindow::openFileByPath);
-
-	connect(m_tabs, &QTabWidget::currentChanged,
-		this, &MainWindow::onTabChanged);
-	connect(m_tabs, &QTabWidget::tabCloseRequested,
-		this, &MainWindow::closeTab);
+	
 
 	createActions();
 	createMenus();
@@ -55,6 +57,7 @@ MainWindow::MainWindow(QWidget *parent)
 	resize(1000, 700);
 
 	newFile();   // стартовая пустая вкладка
+	updateVersionActions();
 }
 
 // ---------------------------------------------------------------- actions / menus
@@ -91,15 +94,49 @@ void MainWindow::createActions()
 	quitAct->setShortcut(QKeySequence::Quit);
 	connect(quitAct, &QAction::triggered, this, &QWidget::close);
 
+	// ----- Versions -----
+	createVersionAct = new QAction("Create Version", this);
+	connect(createVersionAct, &QAction::triggered,
+		this, &MainWindow::onCreateVersion);
+
+	acceptSecondaryAct = new QAction("Accept as Working", this);
+	connect(acceptSecondaryAct, &QAction::triggered,
+		this, &MainWindow::onAcceptSecondary);
+
+	deleteVersionAct = new QAction("Delete Version", this);
+	connect(deleteVersionAct, &QAction::triggered,
+		this, &MainWindow::onDeleteVersion);
+
+	deleteAllVersionsThisAct = new QAction("Delete All Versions (This File)", this);
+	connect(deleteAllVersionsThisAct, &QAction::triggered,
+		this, &MainWindow::onDeleteAllVersionsThisFile);
+
+	deleteAllVersionsAllAct = new QAction("Delete All Versions (All Files)", this);
+	connect(deleteAllVersionsAllAct, &QAction::triggered,
+		this, &MainWindow::onDeleteAllVersionsAllFiles);
+
+	prevVersionAct = new QAction("Previous Version", this);
+	connect(prevVersionAct, &QAction::triggered,
+		this, &MainWindow::onPrevVersion);
+
+	nextVersionAct = new QAction("Next Version", this);
+	connect(nextVersionAct, &QAction::triggered,
+		this, &MainWindow::onNextVersion);
+
+	showBufferAct = new QAction("Show Buffer", this);
+	connect(showBufferAct, &QAction::triggered,
+		this, &MainWindow::onShowBuffer);
+
+	pasteClipboardAct = new QAction("Paste from Clipboard", this);
+	connect(pasteClipboardAct, &QAction::triggered,
+		this, &MainWindow::onPasteFromClipboard);
+
 	// ----- Compare -----
 	compareClipboardAct = new QAction("Compare with &Clipboard", this);
-	connect(compareClipboardAct, &QAction::triggered,
-		this, &MainWindow::compareWithClipboard);
+	
 
 	stopCompareAct = new QAction("Stop &Comparison", this);
-	connect(stopCompareAct, &QAction::triggered,
-		this, &MainWindow::stopComparison);
-
+	
 	// ----- Settings -----
 	fontAct = new QAction("&Font...", this);
 	connect(fontAct, &QAction::triggered, this, &MainWindow::chooseFont);
@@ -172,6 +209,21 @@ void MainWindow::createMenus()
 	fileMenu->addAction(closeAct);
 	fileMenu->addAction(quitAct);
 
+	QMenu *versionsMenu = menuBar()->addMenu("&Versions");
+	versionsMenu->addAction(createVersionAct);
+	versionsMenu->addSeparator();
+	versionsMenu->addAction(prevVersionAct);
+	versionsMenu->addAction(nextVersionAct);
+	versionsMenu->addSeparator();
+	versionsMenu->addAction(showBufferAct);
+	versionsMenu->addAction(pasteClipboardAct);
+	versionsMenu->addSeparator();
+	versionsMenu->addAction(acceptSecondaryAct);
+	versionsMenu->addSeparator();
+	versionsMenu->addAction(deleteVersionAct);
+	versionsMenu->addAction(deleteAllVersionsThisAct);
+	versionsMenu->addAction(deleteAllVersionsAllAct);
+
 	QMenu *compareMenu = menuBar()->addMenu("&Compare");
 	compareMenu->addAction(compareClipboardAct);
 	compareMenu->addAction(stopCompareAct);
@@ -226,6 +278,12 @@ void MainWindow::connectPane(EditorPane *pane)
 		statusBar()->showMessage(
 			QString("Line: %1, Column: %2").arg(line).arg(col));
 	});
+
+	connect(pane, &EditorPane::secondaryChanged,
+		this, [this, pane]() {
+		if (pane == currentPane())
+			updateVersionActions();
+	});
 }
 
 void MainWindow::addPaneTab(EditorPane *pane)
@@ -248,6 +306,8 @@ void MainWindow::onTabChanged(int /*index*/)
 		if (m_folderTree)
 			m_folderTree->selectFile(p->primaryState().filePath);
 	}
+
+	updateVersionActions();
 }
 
 void MainWindow::updateWindowTitle()
@@ -258,6 +318,28 @@ void MainWindow::updateWindowTitle()
 		title += " - " + pane->tabTitle();
 	}
 	setWindowTitle(title);
+}
+
+void MainWindow::updateVersionActions()
+{
+	EditorPane *pane = currentPane();
+	const bool hasPane = pane != nullptr;
+	const bool hasFile = hasPane && !pane->primaryState().filePath.isEmpty();
+	const bool hasSecond = hasPane && pane->isDiffMode();
+
+	createVersionAct->setEnabled(hasFile);
+	acceptSecondaryAct->setEnabled(hasSecond
+		&& (pane->secondarySource() == SecondarySource::Version
+			|| pane->secondarySource() == SecondarySource::Buffer));
+	deleteVersionAct->setEnabled(hasSecond
+		&& pane->secondarySource() == SecondarySource::Version);
+	deleteAllVersionsThisAct->setEnabled(hasFile);
+	deleteAllVersionsAllAct->setEnabled(m_folderTree
+		&& !m_folderTree->rootPath().isEmpty());
+	prevVersionAct->setEnabled(hasPane && pane->canGoPrevious());
+	nextVersionAct->setEnabled(hasPane && pane->canGoNext());
+	showBufferAct->setEnabled(hasPane);   // даже если буфера нет - no-op
+	pasteClipboardAct->setEnabled(hasPane);
 }
 
 // ---------------------------------------------------------------- file ops
@@ -410,29 +492,6 @@ void MainWindow::closeEvent(QCloseEvent *event)
 	event->accept();
 }
 
-// ---------------------------------------------------------------- compare
-
-void MainWindow::compareWithClipboard()
-{
-	EditorPane *pane = currentPane();
-	if (!pane) return;
-
-	const QString clip = QApplication::clipboard()->text();
-	if (clip.isEmpty()) {
-		statusBar()->showMessage("Clipboard is empty", 3000);
-		return;
-	}
-	pane->setSecondary(SecondarySource::Clipboard, clip,
-		QStringLiteral("clipboard"));
-	statusBar()->showMessage("Comparing with clipboard", 3000);
-}
-
-void MainWindow::stopComparison()
-{
-	if (auto *pane = currentPane())
-		pane->clearSecondary();
-}
-
 // ---------------------------------------------------------------- settings
 
 void MainWindow::chooseFont()
@@ -499,4 +558,120 @@ void MainWindow::rebuildFontPool()
 	}
 
 	emit m_fontManager->fontsChanged();
+}
+
+void MainWindow::onCreateVersion()
+{
+	EditorPane *pane = currentPane();
+	if (!pane) return;
+	QString err;
+	if (!pane->createVersion(&err)) {
+		if (!err.isEmpty())
+			QMessageBox::warning(this, "Cannot create version", err);
+	}
+	updateVersionActions();
+}
+
+void MainWindow::onAcceptSecondary()
+{
+	EditorPane *pane = currentPane();
+	if (!pane) return;
+	QString err;
+	if (!pane->acceptSecondary(&err)) {
+		if (!err.isEmpty())
+			QMessageBox::warning(this, "Cannot accept version", err);
+	}
+	updateVersionActions();
+}
+
+void MainWindow::onDeleteVersion()
+{
+	EditorPane *pane = currentPane();
+	if (!pane) return;
+
+	const auto btn = QMessageBox::question(this, "Delete version",
+		"Delete the version shown in the right panel?",
+		QMessageBox::Yes | QMessageBox::No);
+	if (btn != QMessageBox::Yes) return;
+
+	QString err;
+	if (!pane->deleteSecondaryVersion(&err)) {
+		if (!err.isEmpty())
+			QMessageBox::warning(this, "Cannot delete version", err);
+	}
+	updateVersionActions();
+}
+
+void MainWindow::onDeleteAllVersionsThisFile()
+{
+	EditorPane *pane = currentPane();
+	if (!pane) return;
+
+	const auto btn = QMessageBox::question(this, "Delete all versions",
+		QString("Delete all versions of \"%1\"?")
+		.arg(pane->primaryState().displayName()),
+		QMessageBox::Yes | QMessageBox::No);
+	if (btn != QMessageBox::Yes) return;
+
+	QString err;
+	const int n = pane->deleteAllVersions(&err);
+	if (!err.isEmpty())
+		QMessageBox::warning(this, "Cannot delete versions", err);
+
+	statusBar()->showMessage(
+		QString("Deleted %1 version(s).").arg(n), 3000);
+	updateVersionActions();
+}
+
+void MainWindow::onDeleteAllVersionsAllFiles()
+{
+	if (!m_folderTree || m_folderTree->rootPath().isEmpty())
+		return;
+
+	const auto btn = QMessageBox::question(this, "Delete all versions",
+		"Delete ALL version files under:\n" + m_folderTree->rootPath() +
+		"\n\nThis cannot be undone.",
+		QMessageBox::Yes | QMessageBox::No);
+	if (btn != QMessageBox::Yes) return;
+
+	QString err;
+	const int n = VersionStore::removeAllUnder(m_folderTree->rootPath(), &err);
+	if (!err.isEmpty())
+		QMessageBox::warning(this, "Cannot delete some versions", err);
+
+	// Закрыть secondary во всех вкладках, где показана версия
+	for (int i = 0; i < m_tabs->count(); ++i) {
+		auto *p = qobject_cast<EditorPane *>(m_tabs->widget(i));
+		if (!p) continue;
+		if (p->secondarySource() == SecondarySource::Version)
+			p->clearSecondary();
+	}
+
+	statusBar()->showMessage(
+		QString("Deleted %1 version file(s).").arg(n), 3000);
+	updateVersionActions();
+}
+
+void MainWindow::onPrevVersion()
+{
+	if (auto *p = currentPane()) p->goPreviousVersion();
+	updateVersionActions();
+}
+
+void MainWindow::onNextVersion()
+{
+	if (auto *p = currentPane()) p->goNextVersion();
+	updateVersionActions();
+}
+
+void MainWindow::onShowBuffer()
+{
+	if (auto *p = currentPane()) p->showBuffer();
+	updateVersionActions();
+}
+
+void MainWindow::onPasteFromClipboard()
+{
+	if (auto *p = currentPane()) p->pasteFromClipboard();
+	updateVersionActions();
 }

@@ -5,6 +5,7 @@
 
 class QAction;
 class QTabWidget;
+class QMenu;
 class FontManager;
 class EditorPane;
 class FolderTree;   // новый forward
@@ -22,6 +23,8 @@ protected:
 private slots:
 	void newFile();
 	void openFile();
+	void openFolder();
+	void openFileByPath(const QString &path);
 	bool saveFile();
 	bool saveFileAs();
 	void closeCurrentTab();
@@ -29,15 +32,22 @@ private slots:
 	void onTabChanged(int index);
 	void updateWindowTitle();
 
-	void compareWithClipboard();
-	void stopComparison();
 
 	void chooseFont();
 	void toggleDarkTheme(bool enabled);
 	void about();
-
-	void openFolder();
-	void openFileByPath(const QString &path);   // переиспользуется из openFile и из дерева
+	
+	// ---- Versions ----
+	void onCreateVersion();
+	void onAcceptSecondary();
+	void onDeleteVersion();
+	void onDeleteAllVersionsThisFile();
+	void onDeleteAllVersionsAllFiles();
+	void onPrevVersion();
+	void onNextVersion();
+	void onShowBuffer();
+	void onPasteFromClipboard();
+	void updateVersionActions();
 
 private:
 	void createActions();
@@ -55,7 +65,7 @@ private:
 
 	QTabWidget  *m_tabs = nullptr;
 	FontManager *m_fontManager = nullptr;
-	FolderTree *m_folderTree = nullptr;
+	FolderTree  *m_folderTree = nullptr;
 
 	QVector<SyntaxElementStyle> m_syntaxElements;
 
@@ -71,6 +81,17 @@ private:
 	QAction *fontAct;
 	QAction *darkThemeAct;
 	QAction *aboutAct;
+
+	// Versions
+	QAction *createVersionAct;
+	QAction *acceptSecondaryAct;
+	QAction *deleteVersionAct;
+	QAction *deleteAllVersionsThisAct;
+	QAction *deleteAllVersionsAllAct;
+	QAction *prevVersionAct;
+	QAction *nextVersionAct;
+	QAction *showBufferAct;
+	QAction *pasteClipboardAct;
 
 	int m_untitledCounter = 0;
 };

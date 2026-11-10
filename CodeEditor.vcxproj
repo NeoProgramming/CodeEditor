@@ -100,6 +100,7 @@
     <ClCompile Include="src/main.cpp" />
     <ClCompile Include="src\EditorPane.cpp" />
     <ClCompile Include="src\FolderTree.cpp" />
+    <ClCompile Include="src\VersionStore.cpp" />
   </ItemGroup>
   <ItemGroup>
     <QtRcc Include="CodeEditor.qrc" />
@@ -115,6 +116,7 @@
   <ItemGroup>
     <ClInclude Include="src/FixedHeightLayout.h" />
     <ClInclude Include="src/syntaxstyle.h" />
+    <ClInclude Include="src\VersionStore.h" />
     <QtMoc Include="src\FolderTree.h" />
     <ClInclude Include="src\PrimaryState.h" />
     <QtMoc Include="src\EditorPane.h" />

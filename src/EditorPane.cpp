@@ -1,21 +1,25 @@
 #include "EditorPane.h"
 #include "CodeEditor.h"
 #include "FontManager.h"
+#include "VersionStore.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QFile>
 #include <QTextStream>
 #include <QTextDocument>
+#include <QMessageBox>
+#include <QDateTime>
+#include <QApplication>
+#include <QClipboard>
 
 QString secondarySourceLabel(SecondarySource src)
 {
     switch (src) {
-    case SecondarySource::Clipboard:      return QStringLiteral("clipboard");
-    case SecondarySource::RepositoryCopy: return QStringLiteral("repo copy");
-    case SecondarySource::Snapshot:       return QStringLiteral("snapshot");
-    case SecondarySource::Other:          return QStringLiteral("external");
-    case SecondarySource::None:           break;
+	case SecondarySource::Version: return QStringLiteral("version");
+	case SecondarySource::Current: return QStringLiteral("current");
+	case SecondarySource::Buffer:  return QStringLiteral("buffer");
+	case SecondarySource::None:    break;
     }
     return QString();
 }
@@ -147,7 +151,315 @@ void EditorPane::clearSecondary()
     m_secondarySource = SecondarySource::None;
     m_secondaryLabel.clear();
     updateTitle();
+	emit secondaryChanged();
 }
+
+void EditorPane::showVersion(const QString &versionPath)
+{
+	QFile file(versionPath);
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		QMessageBox::warning(this, "Error",
+			QString("Cannot open version file:\n%1").arg(versionPath));
+		return;
+	}
+	QTextStream in(&file);
+	const QString text = in.readAll();
+
+	if (!m_secondary) {
+		const QTextCursor saved = m_primary->textCursor();
+		m_secondary = new CodeEditor(m_fontManager, m_elements, m_splitter);
+		m_secondary->setReadOnly(true);
+		m_splitter->addWidget(m_secondary);
+		m_splitter->setSizes({ 1, 1 });
+		m_primary->setTextCursor(saved);
+		m_primary->setFocus();
+	}
+
+	m_secondary->setPlainText(text);
+	m_secondarySource = SecondarySource::Version;
+	m_secondaryVersionPath = versionPath;
+	updateTitle();
+	emit secondaryChanged();
+}
+
+void EditorPane::showCurrent()
+{
+	if (!m_secondary)
+		return;
+	m_secondary->setPlainText(m_primary->toPlainText());
+	m_secondarySource = SecondarySource::Current;
+	m_secondaryVersionPath.clear();
+	updateTitle();
+	emit secondaryChanged();
+}
+
+void EditorPane::showBuffer()
+{
+	if (!m_hasBuffer)
+		return;
+
+	if (!m_secondary) {
+		const QTextCursor saved = m_primary->textCursor();
+		m_secondary = new CodeEditor(m_fontManager, m_elements, m_splitter);
+		m_secondary->setReadOnly(true);
+		m_splitter->addWidget(m_secondary);
+		m_splitter->setSizes({ 1, 1 });
+		m_primary->setTextCursor(saved);
+		m_primary->setFocus();
+	}
+
+	m_secondary->setPlainText(m_bufferText);
+	m_secondarySource = SecondarySource::Buffer;
+	m_secondaryVersionPath.clear();
+	updateTitle();
+	emit secondaryChanged();
+}
+
+void EditorPane::pasteFromClipboard()
+{
+	const QString clip = QApplication::clipboard()->text();
+	if (clip.isEmpty()) {
+		QMessageBox::warning(this, "Paste",
+			"Clipboard is empty.");
+		return;
+	}
+	m_bufferText = clip;
+	m_hasBuffer = true;
+	showBuffer();
+}
+
+bool EditorPane::ensureSavedOrConfirm(QString *error)
+{
+	if (!m_primaryState.modified)
+		return true;
+	if (m_primaryState.filePath.isEmpty()) {
+		// Untitled - сохранять некуда
+		QMessageBox::warning(this, "Unsaved",
+			"Save the file first.");
+		return false;
+	}
+
+	const auto btn = QMessageBox::question(this, "Unsaved changes",
+		"The working file has unsaved changes.\n"
+		"Save them before continuing?\n\n"
+		"Yes  - save, then continue\n"
+		"No   - discard changes and continue\n"
+		"Cancel - abort",
+		QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+
+	if (btn == QMessageBox::Cancel)
+		return false;
+	if (btn == QMessageBox::No)
+		return true;   // продолжаем, несохранённое отбросится
+
+	return savePrimary(error);
+}
+
+bool EditorPane::createVersion(QString *error)
+{
+	if (m_primaryState.filePath.isEmpty()) {
+		if (error) *error = "File is not saved.";
+		return false;
+	}
+	if (m_primaryState.modified) {
+		// Создавать версию надо из сохранённого состояния
+		if (!ensureSavedOrConfirm(error))
+			return false;
+	}
+
+	QString err;
+	const QString path = VersionStore::create(m_primaryState.filePath, &err);
+	if (path.isEmpty()) {
+		if (error) *error = err;
+		return false;
+	}
+	return true;
+}
+
+bool EditorPane::acceptSecondary(QString *error)
+{
+	if (!m_secondary)
+		return false;
+
+	if (!ensureSavedOrConfirm(error))
+		return false;
+
+	switch (m_secondarySource) {
+	case SecondarySource::Version: {
+		QString err;
+		if (!VersionStore::accept(m_primaryState.filePath,
+			m_secondaryVersionPath, &err)) {
+			if (error) *error = err;
+			return false;
+		}
+		// Перечитаем file.cpp с диска
+		QString loadErr;
+		if (!loadIntoPrimary(m_primaryState.filePath, &loadErr)) {
+			if (error) *error = loadErr;
+			return false;
+		}
+		clearSecondary();
+		return true;
+	}
+	case SecondarySource::Buffer: {
+		QString err;
+		if (!VersionStore::writeCurrent(m_primaryState.filePath,
+			m_secondary->toPlainText(), &err)) {
+			if (error) *error = err;
+			return false;
+		}
+		QString loadErr;
+		if (!loadIntoPrimary(m_primaryState.filePath, &loadErr)) {
+			if (error) *error = loadErr;
+			return false;
+		}
+		clearSecondary();
+		return true;
+	}
+	case SecondarySource::Current:
+	case SecondarySource::None:
+		return false;
+	}
+	return false;
+}
+
+bool EditorPane::deleteSecondaryVersion(QString *error)
+{
+	if (m_secondarySource != SecondarySource::Version
+		|| m_secondaryVersionPath.isEmpty())
+		return false;
+
+	QString err;
+	if (!VersionStore::remove(m_secondaryVersionPath, &err)) {
+		if (error) *error = err;
+		return false;
+	}
+	clearSecondary();
+	return true;
+}
+
+int EditorPane::deleteAllVersions(QString *error)
+{
+	if (m_primaryState.filePath.isEmpty())
+		return 0;
+
+	QString err;
+	const int n = VersionStore::removeAll(m_primaryState.filePath, &err);
+	if (n == 0 && !err.isEmpty() && error)
+		*error = err;
+
+	if (m_secondarySource == SecondarySource::Version)
+		clearSecondary();
+	return n;
+}
+
+// ---------------------------------------------------------------- navigation
+
+
+	// Возвращает индекс в списке versions, если path - одна из них; иначе -1.
+	int indexOfVersion(const QStringList &versions, const QString &path)
+	{
+		if (path.isEmpty()) return -1;
+		for (int i = 0; i < versions.size(); ++i) {
+			if (versions[i] == path)
+				return i;
+		}
+		return -1;
+	}
+
+
+bool EditorPane::canGoPrevious() const
+{
+	if (m_primaryState.filePath.isEmpty())
+		return false;
+	const QStringList v = VersionStore::list(m_primaryState.filePath);
+	if (v.isEmpty())
+		return false;
+
+	if (!m_secondary)
+		return true;   // с пустого -> самая свежая
+
+	switch (m_secondarySource) {
+	case SecondarySource::Current:
+		return true;   // с current -> самая свежая
+	case SecondarySource::Version: {
+		const int idx = indexOfVersion(v, m_secondaryVersionPath);
+		return idx > 0;
+	}
+	default:
+		return false;
+	}
+}
+
+bool EditorPane::canGoNext() const
+{
+	if (m_primaryState.filePath.isEmpty())
+		return false;
+	const QStringList v = VersionStore::list(m_primaryState.filePath);
+	if (v.isEmpty())
+		return false;
+
+	if (!m_secondary)
+		return false;
+
+	switch (m_secondarySource) {
+	case SecondarySource::Version: {
+		const int idx = indexOfVersion(v, m_secondaryVersionPath);
+		// если idx валиден и это не последняя - можно вперёд
+		return idx >= 0 && idx < v.size() - 1;
+	}
+	default:
+		return false;
+	}
+}
+
+void EditorPane::goPreviousVersion()
+{
+	if (!canGoPrevious())
+		return;
+
+	const QStringList v = VersionStore::list(m_primaryState.filePath);
+
+	if (!m_secondary || m_secondarySource == SecondarySource::Current) {
+		// с пустого/current -> самая свежая
+		showVersion(v.last());
+		return;
+	}
+	if (m_secondarySource == SecondarySource::Version) {
+		const int idx = indexOfVersion(v, m_secondaryVersionPath);
+		if (idx > 0)
+			showVersion(v[idx - 1]);
+		else if (idx == 0 && m_secondarySource == SecondarySource::Version) {
+			// уже на самой старой - ничего
+		}
+	}
+}
+
+void EditorPane::goNextVersion()
+{
+	const QStringList v = VersionStore::list(m_primaryState.filePath);
+
+	if (!m_secondary)
+		return;
+
+	switch (m_secondarySource) {
+	case SecondarySource::Version: {
+		const int idx = indexOfVersion(v, m_secondaryVersionPath);
+		if (idx < 0) return;
+		if (idx < v.size() - 1) {
+			showVersion(v[idx + 1]);
+		}
+		else {
+			// самая свежая -> current
+			showCurrent();
+		}
+		break;
+	}
+	default:
+		break;
+	}
+}
+
 
 void EditorPane::connectSecondary()
 {
@@ -168,13 +480,27 @@ QString EditorPane::tabTitle() const
     if (m_primaryState.modified)
         title += QStringLiteral(" *");
 
-    if (m_secondary) {
-        const QString label = m_secondaryLabel.isEmpty()
-            ? secondarySourceLabel(m_secondarySource)
-            : m_secondaryLabel;
-        title += QStringLiteral(" ↔ ") + label;
-    }
-    return title;
+	if (m_secondary) {
+		switch (m_secondarySource) {
+		case SecondarySource::Version: {
+			// mtime из имени файла: ~YYYYMMDD_HHMMSS
+			const QString vname = QFileInfo(m_secondaryVersionPath).fileName();
+			const int tilde = vname.lastIndexOf("~");
+			QString stamp = tilde >= 0 ? vname.mid(tilde + 1) : vname;
+			title += QStringLiteral(" <-> v ") + stamp;
+			break;
+		}
+		case SecondarySource::Current:
+			title += QStringLiteral(" <-> current");
+			break;
+		case SecondarySource::Buffer:
+			title += QStringLiteral(" <-> buffer");
+			break;
+		default:
+			break;
+		}
+	}
+	return title;
 }
 
 // ---------------------------------------------------------------- updates
