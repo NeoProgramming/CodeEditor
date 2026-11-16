@@ -51,6 +51,7 @@ MainWindow::MainWindow(QWidget *parent)
 	
 
 	createActions();
+	createToolBars();
 	createMenus();
 	createStatusBar();
 
@@ -133,6 +134,24 @@ void MainWindow::createActions()
 
 	// ----- Compare -----
 	compareClipboardAct = new QAction("Compare with &Clipboard", this);
+
+
+
+	// ----- Diff (заготовки; реальная логика появится вместе с DiffController) -----
+	prevDifferenceAct = new QAction("Previous Difference", this);
+	prevDifferenceAct->setEnabled(false);
+	connect(prevDifferenceAct, &QAction::triggered,
+		this, &MainWindow::onPrevDifference);
+
+	nextDifferenceAct = new QAction("Next Difference", this);
+	nextDifferenceAct->setEnabled(false);
+	connect(nextDifferenceAct, &QAction::triggered,
+		this, &MainWindow::onNextDifference);
+
+	applyDifferenceAct = new QAction("Apply This Difference", this);
+	applyDifferenceAct->setEnabled(false);
+	connect(applyDifferenceAct, &QAction::triggered,
+		this, &MainWindow::onApplyDifference);
 	
 
 	stopCompareAct = new QAction("Stop &Comparison", this);

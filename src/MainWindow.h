@@ -52,6 +52,7 @@ private slots:
 private:
 	void createActions();
 	void createMenus();
+	void createToolBars();
 	void createStatusBar();
 
 	EditorPane *currentPane() const;
@@ -66,6 +67,9 @@ private:
 	QTabWidget  *m_tabs = nullptr;
 	FontManager *m_fontManager = nullptr;
 	FolderTree  *m_folderTree = nullptr;
+
+	QToolBar *m_mainToolBar = nullptr;
+	QToolBar *m_diffToolBar = nullptr;
 
 	QVector<SyntaxElementStyle> m_syntaxElements;
 
@@ -92,6 +96,11 @@ private:
 	QAction *nextVersionAct;
 	QAction *showBufferAct;
 	QAction *pasteClipboardAct;
+
+	// Diff (заготовки; будут задействованы вместе с DiffController)
+	QAction *prevDifferenceAct;
+	QAction *nextDifferenceAct;
+	QAction *applyDifferenceAct;
 
 	int m_untitledCounter = 0;
 };
