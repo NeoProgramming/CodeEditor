@@ -1,4 +1,17 @@
 <RCC>
-    <qresource prefix="CodeEditor">
+    <qresource prefix="icons/">
+		<file>res/file-new.png</file> 
+		<file>res/file-open.png</file> 
+		<file>res/file-save.png</file> 
+		<file>res/version-create.png</file> 
+		<file>res/version-prev.png</file> 
+		<file>res/version-next.png</file> 
+		<file>res/version-close.png</file> 
+		<file>res/version-buffer.png</file> 
+		<file>res/version-paste.png</file> 
+		<file>res/version-accept.png</file> 
+		<file>res/diff-prev.png</file> 
+		<file>res/diff-next.png</file> 
+		<file>res/diff-apply.png</file> 
     </qresource>
 </RCC>

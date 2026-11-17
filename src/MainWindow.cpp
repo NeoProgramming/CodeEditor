@@ -12,6 +12,9 @@
 #include <QCloseEvent>
 #include <QFileDialog>
 #include <QMenuBar>
+#include <QIcon>
+#include <QToolBar>
+#include <QToolButton>
 #include <QMessageBox>
 #include <QStatusBar>
 #include <QTabWidget>
@@ -53,6 +56,7 @@ MainWindow::MainWindow(QWidget *parent)
 	createActions();
 	createToolBars();
 	createMenus();
+	createViewMenu();
 	createStatusBar();
 
 	resize(1000, 700);
@@ -123,6 +127,10 @@ void MainWindow::createActions()
 	nextVersionAct = new QAction("Next Version", this);
 	connect(nextVersionAct, &QAction::triggered,
 		this, &MainWindow::onNextVersion);
+
+	closeVersionAct = new QAction("Close right panel", this);
+	connect(closeVersionAct, &QAction::triggered,
+		this, &MainWindow::onCloseVersion);
 
 	showBufferAct = new QAction("Show Buffer", this);
 	connect(showBufferAct, &QAction::triggered,
@@ -214,6 +222,136 @@ void MainWindow::createActions()
 		if (auto *p = currentPane()) p->primaryEditor()->paste();
 	});
 	addAction(pasteAct);
+}
+
+void MainWindow::applyActionPresentation(QAction *act,
+	const QString &iconPath,
+	const QString &toolTip)
+{
+	if (!act) return;
+	if (!iconPath.isEmpty())
+		act->setIcon(QIcon(iconPath));   // пусто до появления ресурсов — это ок
+	if (!toolTip.isEmpty()) {
+		act->setToolTip(toolTip);
+		act->setStatusTip(toolTip);
+	}
+	
+}
+
+void MainWindow::createToolBars()
+{
+	// ---- Основной тулбар ----
+	m_mainToolBar = addToolBar("Main");
+	m_mainToolBar->setObjectName("MainToolBar");
+	m_mainToolBar->setMovable(false);
+	m_mainToolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+
+	// Презентация действий: иконка + тултип. Иконки появятся с ресурсами;
+	// до этого QIcon будет пустым, но код готов.
+	applyActionPresentation(newAct, ":/icons/res/file-new.png", "New file");
+	applyActionPresentation(openAct, ":/icons/res/file-open.png", "Open file");
+	applyActionPresentation(saveAct, ":/icons/res/file-save.png", "Save");
+	applyActionPresentation(createVersionAct, ":/icons/res/version-create.png", "Create a version of the working file");
+	applyActionPresentation(prevVersionAct, ":/icons/res/version-prev.png", "Show previous version");
+	applyActionPresentation(nextVersionAct, ":/icons/res/version-next.png", "Show next version");
+	applyActionPresentation(showBufferAct, ":/icons/res/version-buffer.png", "Show buffer in the right panel");
+	applyActionPresentation(pasteClipboardAct, ":/icons/res/version-paste.png", "Paste from clipboard into buffer");
+
+	applyActionPresentation(acceptSecondaryAct, ":/icons/res/version-accept.png", "Accept the right panel as working");
+	applyActionPresentation(closeVersionAct, ":/icons/res/version-close.png", "Close right panel");
+
+	applyActionPresentation(prevDifferenceAct, ":/icons/res/diff-prev.png", "Previous difference");
+	applyActionPresentation(nextDifferenceAct, ":/icons/res/diff-next.png", "Next difference");
+	applyActionPresentation(applyDifferenceAct, ":/icons/res/diff-apply.png", "Apply this difference");
+
+	// Группировка: File | Versions | Secondary | Accept | Settings
+	m_mainToolBar->addAction(newAct);
+	m_mainToolBar->addAction(openAct);
+	m_mainToolBar->addAction(saveAct);
+	m_mainToolBar->addSeparator();
+
+	m_mainToolBar->addAction(createVersionAct);
+	m_mainToolBar->addAction(prevVersionAct);
+	m_mainToolBar->addAction(nextVersionAct);
+	m_mainToolBar->addSeparator();
+
+	m_mainToolBar->addAction(showBufferAct);
+	m_mainToolBar->addAction(pasteClipboardAct);
+	m_mainToolBar->addSeparator();
+
+	m_mainToolBar->addAction(acceptSecondaryAct);
+	m_mainToolBar->addAction(closeVersionAct);
+
+	// ---- Diff-тулбар (скрыт, пока нет diff) ----
+	m_diffToolBar = addToolBar("Diff");
+	m_diffToolBar->setObjectName("DiffToolBar");
+	m_diffToolBar->setMovable(false);
+	m_diffToolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+	//m_diffToolBar->setVisible(true);
+
+	
+
+	m_diffToolBar->addAction(prevDifferenceAct);
+	m_diffToolBar->addAction(nextDifferenceAct);
+	m_diffToolBar->addAction(applyDifferenceAct);
+
+	///
+	applyToolButtonStyle(m_mainToolBar, newAct);
+	applyToolButtonStyle(m_mainToolBar, openAct);
+	applyToolButtonStyle(m_mainToolBar, saveAct);
+	applyToolButtonStyle(m_mainToolBar, createVersionAct);
+	applyToolButtonStyle(m_mainToolBar, prevVersionAct);
+	applyToolButtonStyle(m_mainToolBar, nextVersionAct);
+	applyToolButtonStyle(m_mainToolBar, showBufferAct);
+	applyToolButtonStyle(m_mainToolBar, pasteClipboardAct);
+	applyToolButtonStyle(m_mainToolBar, acceptSecondaryAct);
+	applyToolButtonStyle(m_mainToolBar, closeVersionAct);
+
+	applyToolButtonStyle(m_diffToolBar, prevDifferenceAct);
+	applyToolButtonStyle(m_diffToolBar, nextDifferenceAct);
+	applyToolButtonStyle(m_diffToolBar, applyDifferenceAct);
+
+
+	auto style = QStringLiteral(R"(
+    QToolButton {
+        background: #e4e0d8;
+        border-top: 2px solid #ffffff;
+        border-left: 2px solid #ffffff;
+        border-bottom: 2px solid #404040;
+        border-right: 2px solid #404040;
+        padding: 1px;
+        margin: 0px;
+    }
+    QToolButton:hover { 
+        background: #d0dce4; 
+    }
+    QToolButton:pressed {
+        border-top: 2px solid #404040;
+        border-left: 2px solid #404040;
+        border-bottom: 2px solid #ffffff;
+        border-right: 2px solid #ffffff;
+        padding-top: 3px; padding-left: 3px;
+        padding-bottom: 1px; padding-right: 1px;
+    }
+	)");
+	m_mainToolBar->setStyleSheet(style);
+	m_diffToolBar->setStyleSheet(style);
+}
+
+void MainWindow::createViewMenu()
+{
+	QMenu *viewMenu = menuBar()->addMenu("&View");
+
+	// Explorer dock
+	if (m_folderTree)
+		viewMenu->addAction(m_folderTree->toggleViewAction());
+
+	viewMenu->addSeparator();
+
+	if (m_mainToolBar)
+		viewMenu->addAction(m_mainToolBar->toggleViewAction());
+	if (m_diffToolBar)
+		viewMenu->addAction(m_diffToolBar->toggleViewAction());
 }
 
 void MainWindow::createMenus()
@@ -359,6 +497,17 @@ void MainWindow::updateVersionActions()
 	nextVersionAct->setEnabled(hasPane && pane->canGoNext());
 	showBufferAct->setEnabled(hasPane);   // даже если буфера нет - no-op
 	pasteClipboardAct->setEnabled(hasPane);
+
+	// ---- Diff (заготовка; реальные canGo* появятся с DiffController) ----
+   // Пока secondary активен, кнопки видны, но disabled — как только
+   // DiffController будет готов, здесь появятся pane->canGoPrevDifference() и т.п.
+	prevDifferenceAct->setEnabled(false);
+	nextDifferenceAct->setEnabled(false);
+	applyDifferenceAct->setEnabled(false);
+
+	// Показывать diff-тулбар только когда есть secondary
+//	if (m_diffToolBar)
+//		m_diffToolBar->setVisible(hasSecond);
 }
 
 // ---------------------------------------------------------------- file ops
@@ -683,6 +832,12 @@ void MainWindow::onNextVersion()
 	updateVersionActions();
 }
 
+void MainWindow::onCloseVersion()
+{
+	if (auto *p = currentPane()) p->closeVersion();
+	updateVersionActions();
+}
+
 void MainWindow::onShowBuffer()
 {
 	if (auto *p = currentPane()) p->showBuffer();
@@ -693,4 +848,36 @@ void MainWindow::onPasteFromClipboard()
 {
 	if (auto *p = currentPane()) p->pasteFromClipboard();
 	updateVersionActions();
+}
+
+
+void MainWindow::onPrevDifference()
+{
+	// TODO: делегировать в DiffController, когда он появится
+}
+
+void MainWindow::onNextDifference()
+{
+	// TODO
+}
+
+void MainWindow::onApplyDifference()
+{
+	// TODO
+}
+
+void MainWindow::applyToolButtonStyle(QToolBar *bar, QAction *act)
+{
+	if (!act || !m_mainToolBar) return;
+	auto *btn = qobject_cast<QToolButton*>(bar->widgetForAction(act));
+	if (!btn) return;
+
+	if (act->icon().isNull()) {
+		// Иконки нет — показываем текст
+		btn->setToolButtonStyle(Qt::ToolButtonTextOnly);
+	}
+	else {
+		// Иконка есть — только иконка
+		btn->setToolButtonStyle(Qt::ToolButtonIconOnly);
+	}
 }

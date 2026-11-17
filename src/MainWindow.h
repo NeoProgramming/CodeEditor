@@ -6,6 +6,7 @@
 class QAction;
 class QTabWidget;
 class QMenu;
+class QToolBar;
 class FontManager;
 class EditorPane;
 class FolderTree;   // новый forward
@@ -45,15 +46,27 @@ private slots:
 	void onDeleteAllVersionsAllFiles();
 	void onPrevVersion();
 	void onNextVersion();
+	void onCloseVersion();
 	void onShowBuffer();
 	void onPasteFromClipboard();
 	void updateVersionActions();
+
+	// ---- Diff (заготовки, реализация позже) ----
+	void onPrevDifference();
+	void onNextDifference();
+	void onApplyDifference();
 
 private:
 	void createActions();
 	void createMenus();
 	void createToolBars();
+	void createViewMenu();
 	void createStatusBar();
+
+	void applyActionPresentation(QAction *act,
+		const QString &iconPath,
+		const QString &toolTip);
+	void applyToolButtonStyle(QToolBar *bar, QAction *act);
 
 	EditorPane *currentPane() const;
 	EditorPane *createPane();
@@ -94,6 +107,7 @@ private:
 	QAction *deleteAllVersionsAllAct;
 	QAction *prevVersionAct;
 	QAction *nextVersionAct;
+	QAction *closeVersionAct;
 	QAction *showBufferAct;
 	QAction *pasteClipboardAct;
 

@@ -460,6 +460,10 @@ void EditorPane::goNextVersion()
 	}
 }
 
+void EditorPane::closeVersion()
+{
+	clearSecondary();
+}
 
 void EditorPane::connectSecondary()
 {

@@ -82,6 +82,7 @@ public:
 	// Навигация по оси версий: [~старые ... ~свежие] -> Current.
 	void goPreviousVersion();
 	void goNextVersion();
+	void closeVersion();
 	bool canGoPrevious() const;
 	bool canGoNext() const;
 
