@@ -38,6 +38,9 @@
     <QtMoc Include="src\FolderTree.h">
       <Filter>Header Files</Filter>
     </QtMoc>
+    <QtMoc Include="src\DiffController.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src/main.cpp">
@@ -70,6 +73,12 @@
     <ClCompile Include="src\VersionStore.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\DiffModel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DiffController.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <QtMoc Include="src/MainWindow.h">
@@ -99,6 +108,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\VersionStore.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DiffModel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

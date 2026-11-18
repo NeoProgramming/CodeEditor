@@ -26,6 +26,8 @@ public:
 	int lineNumberAreaWidth() const;
 
 	void applyDefaultFont();
+
+	void setHighlightCurrentLineEnabled(bool enabled);
 protected:
 	void resizeEvent(QResizeEvent *event) override;
 
@@ -35,6 +37,7 @@ private slots:
 	void highlightCurrentLine();
 
 private:
+	bool m_highlightCurrentLineEnabled = true;
 	Highlighter  *m_highlighter = nullptr;
 	FixedHeightLayout *m_fixedLayout = nullptr;
 	FontManager  *m_fontManager = nullptr;

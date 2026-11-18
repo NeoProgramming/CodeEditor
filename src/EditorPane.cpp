@@ -24,7 +24,7 @@ QString secondarySourceLabel(SecondarySource src)
     return QString();
 }
 
-// ---------------------------------------------------------------- ctor
+//. ---------------------------------------------------------------- ctor
 
 EditorPane::EditorPane(FontManager *fontManager,
                        const QVector<SyntaxElementStyle> &elements,

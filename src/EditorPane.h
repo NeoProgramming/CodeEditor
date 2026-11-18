@@ -1,5 +1,5 @@
 #pragma once
-
+// main file
 #include <QWidget>
 #include "syntaxstyle.h"
 #include "PrimaryState.h"

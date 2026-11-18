@@ -181,3 +181,12 @@ void CodeEditor::applyDefaultFont()
 	if (maxH > 0)
 		document()->setDefaultFont(tallest);
 }
+
+void CodeEditor::setHighlightCurrentLineEnabled(bool enabled)
+{
+	m_highlightCurrentLineEnabled = enabled;
+	if (!enabled)
+		setExtraSelections({});
+	else
+		highlightCurrentLine();
+}

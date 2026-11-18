@@ -98,6 +98,8 @@
     <ClCompile Include="src/syntaxstyle.cpp" />
     <ClCompile Include="src/CodeEditor.cpp" />
     <ClCompile Include="src/main.cpp" />
+    <ClCompile Include="src\DiffController.cpp" />
+    <ClCompile Include="src\DiffModel.cpp" />
     <ClCompile Include="src\EditorPane.cpp" />
     <ClCompile Include="src\FolderTree.cpp" />
     <ClCompile Include="src\VersionStore.cpp" />
@@ -116,6 +118,8 @@
   <ItemGroup>
     <ClInclude Include="src/FixedHeightLayout.h" />
     <ClInclude Include="src/syntaxstyle.h" />
+    <QtMoc Include="src\DiffController.h" />
+    <ClInclude Include="src\DiffModel.h" />
     <ClInclude Include="src\VersionStore.h" />
     <QtMoc Include="src\FolderTree.h" />
     <ClInclude Include="src\PrimaryState.h" />
