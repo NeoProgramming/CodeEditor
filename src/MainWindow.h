@@ -56,6 +56,9 @@ private slots:
 	void onNextDifference();
 	void onApplyDifference();
 
+	void onReloadWithEncoding();
+	void onSaveWithEncoding();
+
 private:
 	void createActions();
 	void createMenus();
@@ -115,6 +118,9 @@ private:
 	QAction *prevDifferenceAct;
 	QAction *nextDifferenceAct;
 	QAction *applyDifferenceAct;
+
+	QAction *reloadEncodingAct;
+	QAction *saveEncodingAct;
 
 	int m_untitledCounter = 0;
 };

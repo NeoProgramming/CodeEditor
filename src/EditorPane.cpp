@@ -2,7 +2,9 @@
 #include "CodeEditor.h"
 #include "FontManager.h"
 #include "VersionStore.h"
-
+#include "DiffController.h"
+#include "TextCodecUtils.h"
+#include <QTextCodec>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QFile>
@@ -51,6 +53,12 @@ EditorPane::EditorPane(FontManager *fontManager,
     updateTitle();
 }
 
+EditorPane::~EditorPane()
+{
+	delete m_diffController;
+	m_diffController = nullptr;
+}
+
 // ---------------------------------------------------------------- primary
 
 void EditorPane::connectPrimary()
@@ -71,18 +79,17 @@ void EditorPane::connectPrimary()
 
 bool EditorPane::loadIntoPrimary(const QString &path, QString *error)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        if (error) *error = file.errorString();
-        return false;
-    }
-    QTextStream in(&file);
-    m_primary->setPlainText(in.readAll());
-    m_primaryState.filePath = path;
-    m_primaryState.modified = false;
-    m_primary->document()->setModified(false);
-    updateTitle();
-    return true;
+	TextCodecUtils::ReadResult r = TextCodecUtils::readFile(path, error);
+	if (!r.ok)
+		return false;
+
+	m_primary->setPlainText(r.text);
+	m_primaryState.filePath = path;
+	m_primaryState.codecName = r.codecName;
+	m_primaryState.modified = false;
+	m_primary->document()->setModified(false);
+	updateTitle();
+	return true;
 }
 
 bool EditorPane::savePrimary(QString *error)
@@ -94,18 +101,15 @@ bool EditorPane::savePrimary(QString *error)
 
 bool EditorPane::savePrimaryAs(const QString &path, QString *error)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        if (error) *error = file.errorString();
-        return false;
-    }
-    QTextStream out(&file);
-    out << m_primary->toPlainText();
-    m_primaryState.filePath = path;
-    m_primaryState.modified = false;
-    m_primary->document()->setModified(false);
-    updateTitle();
-    return true;
+	if (!TextCodecUtils::writeFile(path, m_primary->toPlainText(),
+		m_primaryState.codecName, error))
+		return false;
+
+	m_primaryState.filePath = path;
+	m_primaryState.modified = false;
+	m_primary->document()->setModified(false);
+	updateTitle();
+	return true;
 }
 
 // ---------------------------------------------------------------- secondary
@@ -143,6 +147,9 @@ void EditorPane::setSecondary(SecondarySource source,
 
 void EditorPane::clearSecondary()
 {
+	delete m_diffController;
+	m_diffController = nullptr;
+
     if (!m_secondary)
         return;
 
@@ -156,14 +163,14 @@ void EditorPane::clearSecondary()
 
 void EditorPane::showVersion(const QString &versionPath)
 {
-	QFile file(versionPath);
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+	QString readError;
+	TextCodecUtils::ReadResult r = TextCodecUtils::readFile(versionPath, &readError);
+	if (!r.ok) {
 		QMessageBox::warning(this, "Error",
 			QString("Cannot open version file:\n%1").arg(versionPath));
 		return;
 	}
-	QTextStream in(&file);
-	const QString text = in.readAll();
+	const QString text = r.text;
 
 	if (!m_secondary) {
 		const QTextCursor saved = m_primary->textCursor();
@@ -179,7 +186,8 @@ void EditorPane::showVersion(const QString &versionPath)
 	m_secondarySource = SecondarySource::Version;
 	m_secondaryVersionPath = versionPath;
 	updateTitle();
-	emit secondaryChanged();
+	recreateDiffController();
+	emit secondaryChanged();	
 }
 
 void EditorPane::showCurrent()
@@ -190,7 +198,8 @@ void EditorPane::showCurrent()
 	m_secondarySource = SecondarySource::Current;
 	m_secondaryVersionPath.clear();
 	updateTitle();
-	emit secondaryChanged();
+	recreateDiffController();
+	emit secondaryChanged();	
 }
 
 void EditorPane::showBuffer()
@@ -212,6 +221,7 @@ void EditorPane::showBuffer()
 	m_secondarySource = SecondarySource::Buffer;
 	m_secondaryVersionPath.clear();
 	updateTitle();
+	recreateDiffController();
 	emit secondaryChanged();
 }
 
@@ -284,15 +294,39 @@ bool EditorPane::acceptSecondary(QString *error)
 	if (!ensureSavedOrConfirm(error))
 		return false;
 
+	// 1. Применить оставшиеся hunks (если контроллер есть).
+	if (m_diffController) {
+		m_diffController->applyAllRemaining();
+	}
+
+	// 2. Теперь m_primaryText содержит полный результат.
+	//    Для Buffer — записать m_primaryText в файл.
+	//    Для Version — сделать rename (сам файл версии не менялся), затем
+	//    перечитать m_primaryText с диска.
 	switch (m_secondarySource) {
 	case SecondarySource::Version: {
+		// Версия на диске не менялась — файл versionPath всё ещё содержит
+		// исходное содержимое версии. Rename file.cpp -> ~T, ~T -> file.cpp.
 		QString err;
 		if (!VersionStore::accept(m_primaryState.filePath,
 			m_secondaryVersionPath, &err)) {
 			if (error) *error = err;
 			return false;
 		}
-		// Перечитаем file.cpp с диска
+		// Перечитать file.cpp с диска — но если пользователь применял
+		// hunks вручную, m_primaryText отличается от содержимого
+		// versionPath. Значит, после rename file.cpp содержит содержимое
+		// versionPath, а не m_primaryText. Надо перезаписать file.cpp
+		// содержимым m_primaryText.
+		if (!VersionStore::writeCurrent(m_primaryState.filePath,
+			m_diffController
+				? m_diffController->primaryRealText()
+				: m_primary->toPlainText(),
+			m_primaryState.codecName,
+			&err)) {
+			if (error) *error = err;
+			return false;
+		}
 		QString loadErr;
 		if (!loadIntoPrimary(m_primaryState.filePath, &loadErr)) {
 			if (error) *error = loadErr;
@@ -302,9 +336,14 @@ bool EditorPane::acceptSecondary(QString *error)
 		return true;
 	}
 	case SecondarySource::Buffer: {
+		// m_primaryText содержит всё, что было в buffer + применённые hunks.
 		QString err;
 		if (!VersionStore::writeCurrent(m_primaryState.filePath,
-			m_secondary->toPlainText(), &err)) {
+			m_diffController
+				? m_diffController->primaryRealText()
+				: m_secondary->toPlainText(), 
+			m_primaryState.codecName,
+			&err)) {
 			if (error) *error = err;
 			return false;
 		}
@@ -521,3 +560,69 @@ void EditorPane::applyFontsChanged()
     if (m_primary)   m_primary->onFontsChanged();
     if (m_secondary) m_secondary->onFontsChanged();
 }
+
+void EditorPane::recreateDiffController()
+{
+	// Удалить старый контроллер (если был).
+	delete m_diffController;
+	m_diffController = nullptr;
+
+	// Создать новый, только если есть secondary.
+	if (m_secondary) {
+		m_diffController = new DiffController(m_primary, m_secondary, this);
+		connect(m_diffController, &DiffController::hunksChanged,
+			this, &EditorPane::secondaryChanged);   // чтобы MainWindow обновил кнопки
+		connect(m_diffController, &DiffController::primaryModifiedByDiff,
+			this, [this]() {
+			// primary помечен modified — обновим заголовок вкладки
+			m_primaryState.modified = true;
+			updateTitle();
+		});
+	}
+}
+
+bool EditorPane::reloadWithEncoding(const QByteArray &codecName, QString *error)
+{
+	if (m_primaryState.filePath.isEmpty()) {
+		if (error) *error = "File is not saved.";
+		return false;
+	}
+
+	QFile file(m_primaryState.filePath);
+	if (!file.open(QIODevice::ReadOnly)) {
+		if (error) *error = file.errorString();
+		return false;
+	}
+	const QByteArray raw = file.readAll();
+	file.close();
+
+	QTextCodec *codec = TextCodecUtils::codecForNameOrDefault(codecName);
+	const QString text = codec->toUnicode(raw);
+
+	m_primary->setPlainText(text);
+	m_primaryState.codecName = codec->name();
+	m_primaryState.modified = false;
+	m_primary->document()->setModified(false);
+	updateTitle();
+	return true;
+}
+
+bool EditorPane::saveWithEncoding(const QByteArray &codecName, QString *error)
+{
+	if (m_primaryState.filePath.isEmpty())
+		return false;
+
+	if (!TextCodecUtils::writeFile(m_primaryState.filePath,
+		m_primary->toPlainText(),
+		codecName, error))
+		return false;
+
+	m_primaryState.codecName = TextCodecUtils::codecForNameOrDefault(codecName)->name();
+	m_primaryState.modified = false;
+	m_primary->document()->setModified(false);
+	updateTitle();
+	return true;
+}
+
+
+

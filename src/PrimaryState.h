@@ -10,6 +10,7 @@ struct PrimaryState
     QString filePath;          // пусто = Untitled
     int     untitledNumber = 0;
     bool    modified = false;
+	QByteArray codecName = "UTF-8";
 
     QString displayName() const
     {

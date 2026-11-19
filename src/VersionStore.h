@@ -28,8 +28,9 @@ namespace VersionStore
                 QString *error = nullptr);
 
     // Записать text в filePath (для "Accept buffer").
-    bool writeCurrent(const QString &filePath, const QString &text,
-                      QString *error = nullptr);
+	bool writeCurrent(const QString &filePath, const QString &text,
+		const QByteArray &codecName = QByteArray(),
+		QString *error = nullptr);
 
     // Удалить одну версию.
     bool remove(const QString &versionPath, QString *error = nullptr);

@@ -5,6 +5,8 @@
 #include "VersionStore.h"
 #include "codeeditor.h"
 #include "FolderTree.h"
+#include "DiffController.h"
+#include "TextCodecUtils.h"
 
 #include <QAction>
 #include <QApplication>
@@ -19,7 +21,7 @@
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QDebug>
-
+#include <QInputDialog>
 // ---------------------------------------------------------------- ctor
 
 MainWindow::MainWindow(QWidget *parent)
@@ -143,7 +145,7 @@ void MainWindow::createActions()
 	// ----- Compare -----
 	compareClipboardAct = new QAction("Compare with &Clipboard", this);
 
-
+	
 
 	// ----- Diff (заготовки; реальная логика появится вместе с DiffController) -----
 	prevDifferenceAct = new QAction("Previous Difference", this);
@@ -161,8 +163,16 @@ void MainWindow::createActions()
 	connect(applyDifferenceAct, &QAction::triggered,
 		this, &MainWindow::onApplyDifference);
 	
-
 	stopCompareAct = new QAction("Stop &Comparison", this);
+
+	reloadEncodingAct = new QAction("Reload with Encoding...", this);
+	connect(reloadEncodingAct, &QAction::triggered,
+		this, &MainWindow::onReloadWithEncoding);
+
+	saveEncodingAct = new QAction("Save with Encoding...", this);
+	connect(saveEncodingAct, &QAction::triggered,
+		this, &MainWindow::onSaveWithEncoding);
+
 	
 	// ----- Settings -----
 	fontAct = new QAction("&Font...", this);
@@ -363,8 +373,12 @@ void MainWindow::createMenus()
 	fileMenu->addAction(saveAct);
 	fileMenu->addAction(saveAsAct);
 	fileMenu->addSeparator();
+	fileMenu->addAction(reloadEncodingAct);
+	fileMenu->addAction(saveEncodingAct);
+	fileMenu->addSeparator();
 	fileMenu->addAction(closeAct);
 	fileMenu->addAction(quitAct);
+	
 
 	QMenu *versionsMenu = menuBar()->addMenu("&Versions");
 	versionsMenu->addAction(createVersionAct);
@@ -483,6 +497,7 @@ void MainWindow::updateVersionActions()
 	const bool hasPane = pane != nullptr;
 	const bool hasFile = hasPane && !pane->primaryState().filePath.isEmpty();
 	const bool hasSecond = hasPane && pane->isDiffMode();
+	DiffController *dc = pane ? pane->diffController() : nullptr;
 
 	createVersionAct->setEnabled(hasFile);
 	acceptSecondaryAct->setEnabled(hasSecond
@@ -498,12 +513,10 @@ void MainWindow::updateVersionActions()
 	showBufferAct->setEnabled(hasPane);   // даже если буфера нет - no-op
 	pasteClipboardAct->setEnabled(hasPane);
 
-	// ---- Diff (заготовка; реальные canGo* появятся с DiffController) ----
-   // Пока secondary активен, кнопки видны, но disabled — как только
-   // DiffController будет готов, здесь появятся pane->canGoPrevDifference() и т.п.
-	prevDifferenceAct->setEnabled(false);
-	nextDifferenceAct->setEnabled(false);
-	applyDifferenceAct->setEnabled(false);
+    // Пока secondary активен, кнопки видны, но disabled — как только
+	prevDifferenceAct->setEnabled(dc && dc->canGoPrevHunk());
+	nextDifferenceAct->setEnabled(dc && dc->canGoNextHunk());
+	applyDifferenceAct->setEnabled(dc && dc->currentHunkIndex() >= 0);
 
 	// Показывать diff-тулбар только когда есть secondary
 //	if (m_diffToolBar)
@@ -853,17 +866,26 @@ void MainWindow::onPasteFromClipboard()
 
 void MainWindow::onPrevDifference()
 {
-	// TODO: делегировать в DiffController, когда он появится
+	if (auto *p = currentPane())
+		if (auto *dc = p->diffController())
+			dc->goPrevHunk();
+	updateVersionActions();
 }
 
 void MainWindow::onNextDifference()
 {
-	// TODO
+	if (auto *p = currentPane())
+		if (auto *dc = p->diffController())
+			dc->goNextHunk();
+	updateVersionActions();
 }
 
 void MainWindow::onApplyDifference()
 {
-	// TODO
+	if (auto *p = currentPane())
+		if (auto *dc = p->diffController())
+			dc->applyHunk();
+	updateVersionActions();
 }
 
 void MainWindow::applyToolButtonStyle(QToolBar *bar, QAction *act)
@@ -880,4 +902,56 @@ void MainWindow::applyToolButtonStyle(QToolBar *bar, QAction *act)
 		// Иконка есть — только иконка
 		btn->setToolButtonStyle(Qt::ToolButtonIconOnly);
 	}
+}
+
+void MainWindow::onReloadWithEncoding()
+{
+	EditorPane *pane = currentPane();
+	if (!pane || pane->primaryState().filePath.isEmpty())
+		return;
+
+	const QList<QByteArray> codecs = TextCodecUtils::availableCodecNames();
+	QStringList items;
+	for (const QByteArray &c : codecs)
+		items << QString::fromLatin1(c);
+
+	const QByteArray current = pane->primaryState().codecName;
+	int currentIdx = items.indexOf(QString::fromLatin1(current));
+
+	bool ok = false;
+	const QString chosen = QInputDialog::getItem(
+		this, "Reload with Encoding",
+		"Encoding:", items, currentIdx, false, &ok);
+	if (!ok || chosen.isEmpty())
+		return;
+
+	QString err;
+	if (!pane->reloadWithEncoding(chosen.toLatin1(), &err))
+		QMessageBox::warning(this, "Error", err);
+}
+
+void MainWindow::onSaveWithEncoding()
+{
+	EditorPane *pane = currentPane();
+	if (!pane || pane->primaryState().filePath.isEmpty())
+		return;
+
+	const QList<QByteArray> codecs = TextCodecUtils::availableCodecNames();
+	QStringList items;
+	for (const QByteArray &c : codecs)
+		items << QString::fromLatin1(c);
+
+	const QByteArray current = pane->primaryState().codecName;
+	int currentIdx = items.indexOf(QString::fromLatin1(current));
+
+	bool ok = false;
+	const QString chosen = QInputDialog::getItem(
+		this, "Save with Encoding",
+		"Encoding:", items, currentIdx, false, &ok);
+	if (!ok || chosen.isEmpty())
+		return;
+
+	QString err;
+	if (!pane->saveWithEncoding(chosen.toLatin1(), &err))
+		QMessageBox::warning(this, "Error", err);
 }

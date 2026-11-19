@@ -4,7 +4,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QRegularExpression>
-
+#include <QTextCodec>
 
 
 // Формат таймштампа в имени версии: YYYYMMDD_HHMMSS.
@@ -138,20 +138,27 @@ bool accept(const QString &filePath, const QString &versionPath,
 }
 
 bool writeCurrent(const QString &filePath, const QString &text,
-                  QString *error)
+	const QByteArray &codecName, QString *error)
 {
-    QFile f(filePath);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-        if (error) *error = f.errorString();
-        return false;
-    }
-    const QByteArray bytes = text.toUtf8();
-    if (f.write(bytes) != bytes.size()) {
-        if (error) *error = f.errorString();
-        return false;
-    }
-    f.close();
-    return true;
+	QFile f(filePath);
+	if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+		if (error) *error = f.errorString();
+		return false;
+	}
+
+	QTextCodec *codec = codecName.isEmpty()
+		? QTextCodec::codecForName("UTF-8")
+		: QTextCodec::codecForName(codecName);
+	if (!codec)
+		codec = QTextCodec::codecForName("UTF-8");
+
+	const QByteArray bytes = codec->fromUnicode(text);
+	if (f.write(bytes) != bytes.size()) {
+		if (error) *error = f.errorString();
+		return false;
+	}
+	f.close();
+	return true;
 }
 
 bool remove(const QString &versionPath, QString *error)

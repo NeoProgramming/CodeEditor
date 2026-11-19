@@ -7,6 +7,7 @@
 class QSplitter;
 class CodeEditor;
 class FontManager;
+class DiffController;
 
 // Откуда взят текст для второго (дополнительного) редактора.
 // Второй редактор всегда read-only и никогда не участвует в Save.
@@ -34,6 +35,7 @@ public:
                const QVector<SyntaxElementStyle> &elements,
                int untitledNumber,
                QWidget *parent = nullptr);
+	~EditorPane()  override;
 
     // ---- Primary (есть всегда) ----
     CodeEditor   *primaryEditor() const { return m_primary; }
@@ -45,6 +47,7 @@ public:
     SecondarySource  secondarySource() const { return m_secondarySource; }
     bool             isDiffMode()      const { return m_secondary != nullptr; }
 
+	DiffController *diffController() const { return m_diffController; }
 
 	// Показать версию с диска. filePath версии сохраняется в m_secondaryVersionPath.
 	void showVersion(const QString &versionPath);
@@ -108,6 +111,12 @@ public:
     void applySyntaxStyles(const QVector<SyntaxElementStyle> &elements);
     void applyFontsChanged();
 
+	// Перечитать файл с указанной кодировкой (для Reload with Encoding).
+	bool reloadWithEncoding(const QByteArray &codecName, QString *error = nullptr);
+
+	// Сохранить файл в указанной кодировке (для Save with Encoding).
+	bool saveWithEncoding(const QByteArray &codecName, QString *error = nullptr);
+
 signals:
     void titleChanged();
     void cursorPositionChanged(int line, int col);   // только primary
@@ -119,6 +128,10 @@ private:
     void connectSecondary();
     void updateTitle();
 	bool ensureSavedOrConfirm(QString *error);   // спросить Save/Discard/Cancel
+
+	void recreateDiffController();   // создать/пересоздать/удалить по состоянию secondary
+
+	DiffController *m_diffController = nullptr;
 
     FontManager *m_fontManager = nullptr;
     QVector<SyntaxElementStyle> m_elements;

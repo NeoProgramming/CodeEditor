@@ -102,6 +102,7 @@
     <ClCompile Include="src\DiffModel.cpp" />
     <ClCompile Include="src\EditorPane.cpp" />
     <ClCompile Include="src\FolderTree.cpp" />
+    <ClCompile Include="src\TextCodecUtils.cpp" />
     <ClCompile Include="src\VersionStore.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -120,6 +121,7 @@
     <ClInclude Include="src/syntaxstyle.h" />
     <QtMoc Include="src\DiffController.h" />
     <ClInclude Include="src\DiffModel.h" />
+    <ClInclude Include="src\TextCodecUtils.h" />
     <ClInclude Include="src\VersionStore.h" />
     <QtMoc Include="src\FolderTree.h" />
     <ClInclude Include="src\PrimaryState.h" />
