@@ -115,23 +115,7 @@ void CodeEditor::resizeEvent(QResizeEvent *event)
 		QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
 }
 
-void CodeEditor::highlightCurrentLine()
-{
-	QList<QTextEdit::ExtraSelection> extraSelections;
 
-	if (!isReadOnly()) {
-		QTextEdit::ExtraSelection selection;
-		QColor lineColor = QColor(Qt::yellow).lighter(180);
-
-		selection.format.setBackground(lineColor);
-		selection.format.setProperty(QTextFormat::FullWidthSelection, true);
-		selection.cursor = textCursor();
-		selection.cursor.clearSelection();
-		extraSelections.append(selection);
-	}
-
-	setExtraSelections(extraSelections);
-}
 
 void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 {
@@ -146,6 +130,16 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 
 	while (block.isValid() && top <= event->rect().bottom()) {
 		if (block.isVisible() && bottom >= event->rect().top()) {
+			// ---- фон разметки ----
+			const auto it = m_lineMarks.constFind(blockNumber);
+			if (it != m_lineMarks.constEnd() && it.value() != LineMark::None) {
+				painter.fillRect(0, top,
+					m_lineNumberArea->width(),
+					fontMetrics().height(),
+					colorForMark(it.value()));
+			}
+
+			// ---- номер ----
 			QString number = QString::number(blockNumber + 1);
 			painter.setPen(Qt::darkGray);
 			painter.drawText(0, top,
@@ -189,4 +183,60 @@ void CodeEditor::setHighlightCurrentLineEnabled(bool enabled)
 		setExtraSelections({});
 	else
 		highlightCurrentLine();
+}
+
+// CodeEditor.cpp
+void CodeEditor::setLineMarks(const QHash<int, LineMark> &marks)
+{
+	m_lineMarks = marks;
+	m_lineNumberArea->update();
+}
+
+void CodeEditor::clearLineMarks()
+{
+	m_lineMarks.clear();
+	m_lineNumberArea->update();
+}
+
+QColor CodeEditor::colorForMark(LineMark m) const
+{
+	switch (m) {
+	case LineMark::Delete:  return QColor(255, 80, 80, 90);
+	case LineMark::Insert:  return QColor(80, 200, 80, 90);
+	case LineMark::Replace: return QColor(255, 200, 80, 90);   // если захотите отдельный цвет для Replace
+	case LineMark::Current: return QColor(80, 80, 255, 120);   // текущий hunk
+	case LineMark::None:    break;
+	}
+	return QColor();
+}
+
+// CodeEditor.cpp
+void CodeEditor::setBaseExtraSelections(const QList<QTextEdit::ExtraSelection> &s)
+{
+	m_baseSelections = s;
+	rebuildExtraSelections();
+}
+
+void CodeEditor::rebuildExtraSelections()
+{
+	QList<QTextEdit::ExtraSelection> all = m_baseSelections;
+
+	if (m_highlightCurrentLineEnabled) {
+		QTextEdit::ExtraSelection selection;
+		QColor lineColor = QColor(Qt::yellow).lighter(180);
+		selection.format.setBackground(lineColor);
+		selection.format.setProperty(QTextFormat::FullWidthSelection, true);
+		selection.cursor = textCursor();
+		selection.cursor.clearSelection();
+		all.append(selection);
+	}
+
+	setExtraSelections(all);
+}
+
+void CodeEditor::highlightCurrentLine()
+{
+	if (!m_highlightCurrentLineEnabled)
+		return;
+	rebuildExtraSelections();
 }

@@ -97,6 +97,9 @@ void DiffController::applySelections()
     QList<QTextEdit::ExtraSelection> primarySel;
     QList<QTextEdit::ExtraSelection> secondarySel;
 
+	QHash<int, CodeEditor::LineMark> primaryMarks;
+	QHash<int, CodeEditor::LineMark> secondaryMarks;
+
     const QVector<AlignedLine> &lines = m_model.alignedLines();
 
     for (int i = 0; i < lines.size(); ++i) {
@@ -116,6 +119,9 @@ void DiffController::applySelections()
             c.clearSelection();
             sel.cursor = c;
             primarySel.append(sel);
+
+			primaryMarks.insert(i, isCurrent ? CodeEditor::LineMark::Current
+				: CodeEditor::LineMark::Delete);
 
             // Пословная подсветка для Replace — поверх фоновой.
             if (al.op == DiffOp::Replace) {
@@ -143,6 +149,8 @@ void DiffController::applySelections()
             c.clearSelection();
             sel.cursor = c;
             primarySel.append(sel);
+
+			primaryMarks.insert(i, CodeEditor::LineMark::None);   // заполнитель — без метки
         }
 
         // ---- Secondary ----
@@ -168,6 +176,9 @@ void DiffController::applySelections()
                                    QTextCursor::KeepAnchor);
                     ws_sel.cursor = wc;
                     secondarySel.append(ws_sel);
+
+					secondaryMarks.insert(i, isCurrent ? CodeEditor::LineMark::Current
+						: CodeEditor::LineMark::Insert);
                 }
             }
         }
@@ -179,11 +190,15 @@ void DiffController::applySelections()
             c.clearSelection();
             sel.cursor = c;
             secondarySel.append(sel);
+
+			secondaryMarks.insert(i, CodeEditor::LineMark::None);
         }
     }
 
     m_primary->setExtraSelections(primarySel);
     m_secondary->setExtraSelections(secondarySel);
+	m_primary->setLineMarks(primaryMarks);
+	m_secondary->setLineMarks(secondaryMarks);
 }
 
 // ---------------------------------------------------------------- read-only
@@ -228,8 +243,7 @@ void DiffController::setCurrentHunk(int idx, bool scroll)
     }
 
     m_currentHunk = idx;
-    applySelections();
-
+    
     if (scroll) {
         const DiffHunk &h = m_model.hunks()[idx];
         const int editorLine = h.firstAlignedLine;
@@ -257,6 +271,8 @@ void DiffController::setCurrentHunk(int idx, bool scroll)
             m_syncingScroll = false;
         }
     }
+
+	applySelections();
 
     emit hunksChanged();
 }
