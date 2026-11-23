@@ -120,6 +120,7 @@
     <ClInclude Include="src/FixedHeightLayout.h" />
     <ClInclude Include="src/syntaxstyle.h" />
     <QtMoc Include="src\DiffController.h" />
+    <ClInclude Include="src\DiffColors.h" />
     <ClInclude Include="src\DiffModel.h" />
     <ClInclude Include="src\TextCodecUtils.h" />
     <ClInclude Include="src\VersionStore.h" />

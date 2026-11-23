@@ -1,10 +1,13 @@
 #include "codeeditor.h"
 #include "highlighter.h"
+#include "DiffColors.h"
 
 #include <QFontDatabase>
 #include <QPainter>
 #include <QTextBlock>
 #include <QtMath> 
+
+#include <QDebug>
 
 #include "FixedHeightLayout.h"
 #include "FontManager.h"
@@ -122,6 +125,8 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 	QPainter painter(m_lineNumberArea);
 	painter.fillRect(event->rect(), QColor(240, 240, 240));
 
+	qDebug() << "lineNumberAreaPaintEvent: marks=" << m_lineMarks.size();
+	
 	QTextBlock block = firstVisibleBlock();
 	int blockNumber = block.blockNumber();
 	int top = static_cast<int>(
@@ -130,13 +135,19 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 
 	while (block.isValid() && top <= event->rect().bottom()) {
 		if (block.isVisible() && bottom >= event->rect().top()) {
+
+			qDebug() << "paint block" << blockNumber
+				<< "hasMark:" << m_lineMarks.contains(blockNumber);
+
 			// ---- фон разметки ----
 			const auto it = m_lineMarks.constFind(blockNumber);
-			if (it != m_lineMarks.constEnd() && it.value() != LineMark::None) {
-				painter.fillRect(0, top,
-					m_lineNumberArea->width(),
-					fontMetrics().height(),
-					colorForMark(it.value()));
+			if (it != m_lineMarks.constEnd()) {
+				if (it.value() != LineMark::None) {
+					painter.fillRect(0, top,
+						m_lineNumberArea->width(),
+						fontMetrics().height(),
+						colorForMark(it.value()));
+				}
 			}
 
 			// ---- номер ----
@@ -189,22 +200,22 @@ void CodeEditor::setHighlightCurrentLineEnabled(bool enabled)
 void CodeEditor::setLineMarks(const QHash<int, LineMark> &marks)
 {
 	m_lineMarks = marks;
-	m_lineNumberArea->update();
+	if (m_lineNumberArea)
+		m_lineNumberArea->update();
 }
 
 void CodeEditor::clearLineMarks()
 {
 	m_lineMarks.clear();
-	m_lineNumberArea->update();
+	if (m_lineNumberArea)
+		m_lineNumberArea->update();
 }
 
 QColor CodeEditor::colorForMark(LineMark m) const
 {
 	switch (m) {
-	case LineMark::Delete:  return QColor(255, 80, 80, 90);
-	case LineMark::Insert:  return QColor(80, 200, 80, 90);
-	case LineMark::Replace: return QColor(255, 200, 80, 90);   // если захотите отдельный цвет для Replace
-	case LineMark::Current: return QColor(80, 80, 255, 120);   // текущий hunk
+	case LineMark::Diff:    return DiffColors::diff();
+	case LineMark::Current: return DiffColors::current();
 	case LineMark::None:    break;
 	}
 	return QColor();

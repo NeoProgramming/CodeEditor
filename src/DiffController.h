@@ -5,6 +5,7 @@
 #include <QVector>
 
 #include "DiffModel.h"
+#include "CodeEditor.h"
 
 class CodeEditor;
 
@@ -67,6 +68,16 @@ signals:
     void primaryModifiedByDiff();
 
 private:
+	void applyPanelSelection(
+		CodeEditor *editor,
+		int alignedIndex,
+		const AlignedLine &al,		
+		bool primarySide,
+		const QColor &background,
+		CodeEditor::LineMark mark,
+		QList<QTextEdit::ExtraSelection> &out,
+		QHash<int, CodeEditor::LineMark> &marks);	
+
     // Загрузить «раздутые» тексты в редакторы и повесить ExtraSelection.
     void loadAlignedTexts();
 

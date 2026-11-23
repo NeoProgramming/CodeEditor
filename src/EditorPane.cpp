@@ -147,6 +147,15 @@ void EditorPane::setSecondary(SecondarySource source,
 
 void EditorPane::clearSecondary()
 {
+	if (m_primary) {
+		m_primary->setBaseExtraSelections({});
+		m_primary->clearLineMarks();
+	}
+	if (m_secondary) {
+		m_secondary->setBaseExtraSelections({});
+		m_secondary->clearLineMarks();
+	}
+
 	delete m_diffController;
 	m_diffController = nullptr;
 

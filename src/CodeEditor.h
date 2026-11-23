@@ -13,7 +13,7 @@ class CodeEditor : public QPlainTextEdit
 	Q_OBJECT
 
 public:
-	enum class LineMark { None, Delete, Insert, Replace, Current };
+	enum class LineMark { None, Diff, Current };
 
 	explicit CodeEditor(FontManager *fontManager,
 		const QVector<SyntaxElementStyle> &elements, QWidget *parent = nullptr);

@@ -145,13 +145,13 @@ bool FontManager::calibrateFont(FontEntry &entry)
 		f.setPixelSize(px);
 		if (tryFont(f)) {
 
-			QFontMetrics fm(f);
-			qDebug() << entry.family << "px" << px
-				<< "M" << fm.horizontalAdvance('M')
-				<< "i" << fm.horizontalAdvance('i')
-				<< "W" << fm.horizontalAdvance('W')
-				<< "1" << fm.horizontalAdvance('1')
-				<< "space" << fm.horizontalAdvance(' ');
+		//	QFontMetrics fm(f);
+		//	qDebug() << entry.family << "px" << px
+		//		<< "M" << fm.horizontalAdvance('M')
+		//		<< "i" << fm.horizontalAdvance('i')
+		//		<< "W" << fm.horizontalAdvance('W')
+		//		<< "1" << fm.horizontalAdvance('1')
+		//		<< "space" << fm.horizontalAdvance(' ');
 
 			return true;
 		}

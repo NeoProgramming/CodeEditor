@@ -1,5 +1,6 @@
 #include "DiffController.h"
 #include "CodeEditor.h"
+#include "DiffColors.h"
 
 #include <QTextCursor>
 #include <QTextEdit>
@@ -9,24 +10,6 @@
 #include <QColor>
 #include <QDebug>
 
-// ---------------------------------------------------------------- colors
-//
-// Полупрозрачные — работают и на светлой, и на тёмной теме.
-// Primary: удалённые/изменённые-старые — красноватые.
-// Secondary: добавленные/изменённые-новые — зеленоватые.
-// Текущий hunk — чуть ярче.
-
-namespace {
-
-QColor colorPrimaryHunk()      { return QColor(255, 80, 80, 50); }
-QColor colorSecondaryHunk()    { return QColor(80, 200, 80, 50); }
-QColor colorPrimaryCurrent()   { return QColor(255, 80, 80, 110); }
-QColor colorSecondaryCurrent() { return QColor(80, 200, 80, 110); }
-QColor colorPrimaryWord()      { return QColor(255, 0, 0, 120); }
-QColor colorSecondaryWord()    { return QColor(0, 160, 0, 120); }
-QColor colorFiller()           { return QColor(0, 0, 0, 20); }   // пустые строки-заполнители
-
-} // namespace
 
 // ---------------------------------------------------------------- ctor
 
@@ -37,6 +20,9 @@ DiffController::DiffController(CodeEditor *primary, CodeEditor *secondary,
     , m_secondary(secondary)
 {
     Q_ASSERT(m_primary && m_secondary);
+
+	qDebug() << "DiffController: primary=" << m_primary
+		<< "secondary=" << m_secondary;
 
     // Запоминаем «реальные» тексты (без раздутых строк).
     m_primaryText   = m_primary->toPlainText();
@@ -92,111 +78,88 @@ void DiffController::loadAlignedTexts()
 
 // ---------------------------------------------------------------- selections
 
+void DiffController::applyPanelSelection(
+	CodeEditor *editor,
+	int alignedIndex,
+	const AlignedLine &al,
+	bool primarySide,      // какая сторона WordDiff брать (primaryChanged/secondaryChanged)
+	const QColor &background,
+	CodeEditor::LineMark mark,
+	QList<QTextEdit::ExtraSelection> &out,
+	QHash<int, CodeEditor::LineMark> &marks)
+{
+	// есть ли реальная строка в этой панели (иначе заполнитель)
+	const bool hasLine = primarySide 
+		? (al.op != DiffOp::Insert)
+		: (al.op != DiffOp::Delete);
+	// нужна ли пословная подсветка
+	const bool isReplace = (al.op == DiffOp::Replace);
+	
+	// 1. Фоновая подсветка строки (и для реальной, и для заполнителя).
+	QTextEdit::ExtraSelection sel;
+	sel.format.setBackground(background);
+	sel.format.setProperty(QTextFormat::FullWidthSelection, true);
+	QTextCursor c(editor->document()->findBlockByNumber(alignedIndex));
+	c.clearSelection();
+	sel.cursor = c;
+	out.append(sel);
+
+	// 2. Метка для LineNumberArea.
+	marks.insert(alignedIndex, mark);
+
+	// 3. Пословная подсветка — только для Replace (реальная строка с обеих сторон).
+	if (!hasLine || !isReplace)
+		return;
+
+	const WordDiff wd = m_model.wordDiffFor(alignedIndex);
+	const QVector<WordSpan> &spans = primarySide ? wd.primaryChanged
+		: wd.secondaryChanged;
+	if (spans.isEmpty())
+		return;
+
+	QTextBlock block = editor->document()->findBlockByNumber(alignedIndex);
+	for (const WordSpan &ws : spans) {
+		QTextEdit::ExtraSelection ws_sel;
+		ws_sel.format.setBackground(DiffColors::word());
+		QTextCursor wc(block);
+		wc.setPosition(block.position() + ws.start);
+		wc.setPosition(block.position() + ws.start + ws.length,
+			QTextCursor::KeepAnchor);
+		ws_sel.cursor = wc;
+		out.append(ws_sel);
+	}
+}
+
 void DiffController::applySelections()
 {
-    QList<QTextEdit::ExtraSelection> primarySel;
-    QList<QTextEdit::ExtraSelection> secondarySel;
-
+	QList<QTextEdit::ExtraSelection> primarySel;
+	QList<QTextEdit::ExtraSelection> secondarySel;
 	QHash<int, CodeEditor::LineMark> primaryMarks;
 	QHash<int, CodeEditor::LineMark> secondaryMarks;
 
-    const QVector<AlignedLine> &lines = m_model.alignedLines();
+	const QVector<AlignedLine> &lines = m_model.alignedLines();
+	for (int i = 0; i < lines.size(); ++i) {
+		const AlignedLine &al = lines[i];
+		if (al.op == DiffOp::Equal)
+			continue;
 
-    for (int i = 0; i < lines.size(); ++i) {
-        const AlignedLine &al = lines[i];
-        if (al.op == DiffOp::Equal)
-            continue;
+		const bool isCurrent = (al.hunkIndex >= 0 && al.hunkIndex == m_currentHunk);
+		const CodeEditor::LineMark mark = isCurrent
+			? CodeEditor::LineMark::Current
+			: CodeEditor::LineMark::Diff;
+		const QColor bg = isCurrent ? DiffColors::current() : DiffColors::diff();
 
-        const bool isCurrent = (al.hunkIndex >= 0 && al.hunkIndex == m_currentHunk);
+		// Primary: строка есть при Delete/Replace, заполнитель при Insert.
+		applyPanelSelection(m_primary, i, al, /*primarySide=*/true,
+			bg, mark, primarySel, primaryMarks);
 
-        // ---- Primary ----
-        if (al.op == DiffOp::Delete || al.op == DiffOp::Replace) {
-            QTextEdit::ExtraSelection sel;
-            sel.format.setBackground(isCurrent ? colorPrimaryCurrent()
-                                               : colorPrimaryHunk());
-            sel.format.setProperty(QTextFormat::FullWidthSelection, true);
-            QTextCursor c(m_primary->document()->findBlockByNumber(i));
-            c.clearSelection();
-            sel.cursor = c;
-            primarySel.append(sel);
+		// Secondary: строка есть при Insert/Replace, заполнитель при Delete.
+		applyPanelSelection(m_secondary, i, al, /*primarySide=*/false,
+			bg, mark, secondarySel, secondaryMarks);
+	}
 
-			primaryMarks.insert(i, isCurrent ? CodeEditor::LineMark::Current
-				: CodeEditor::LineMark::Delete);
-
-            // Пословная подсветка для Replace — поверх фоновой.
-            if (al.op == DiffOp::Replace) {
-                const WordDiff wd = m_model.wordDiffFor(i);
-                QTextBlock block = m_primary->document()->findBlockByNumber(i);
-                for (const WordSpan &ws : wd.primaryChanged) {
-                    QTextEdit::ExtraSelection ws_sel;
-                    ws_sel.format.setBackground(colorPrimaryWord());
-                    QTextCursor wc(block);
-                    wc.setPosition(block.position() + ws.start);
-                    wc.setPosition(block.position() + ws.start + ws.length,
-                                   QTextCursor::KeepAnchor);
-                    ws_sel.cursor = wc;
-                    primarySel.append(ws_sel);
-                }
-            }
-        }
-        else if (al.op == DiffOp::Insert) {
-            // Строка-заполнитель в primary — отметим лёгким фоном,
-            // чтобы визуально отличать от настоящей пустой строки.
-            QTextEdit::ExtraSelection sel;
-            sel.format.setBackground(colorFiller());
-            sel.format.setProperty(QTextFormat::FullWidthSelection, true);
-            QTextCursor c(m_primary->document()->findBlockByNumber(i));
-            c.clearSelection();
-            sel.cursor = c;
-            primarySel.append(sel);
-
-			primaryMarks.insert(i, CodeEditor::LineMark::None);   // заполнитель — без метки
-        }
-
-        // ---- Secondary ----
-        if (al.op == DiffOp::Insert || al.op == DiffOp::Replace) {
-            QTextEdit::ExtraSelection sel;
-            sel.format.setBackground(isCurrent ? colorSecondaryCurrent()
-                                               : colorSecondaryHunk());
-            sel.format.setProperty(QTextFormat::FullWidthSelection, true);
-            QTextCursor c(m_secondary->document()->findBlockByNumber(i));
-            c.clearSelection();
-            sel.cursor = c;
-            secondarySel.append(sel);
-
-            if (al.op == DiffOp::Replace) {
-                const WordDiff wd = m_model.wordDiffFor(i);
-                QTextBlock block = m_secondary->document()->findBlockByNumber(i);
-                for (const WordSpan &ws : wd.secondaryChanged) {
-                    QTextEdit::ExtraSelection ws_sel;
-                    ws_sel.format.setBackground(colorSecondaryWord());
-                    QTextCursor wc(block);
-                    wc.setPosition(block.position() + ws.start);
-                    wc.setPosition(block.position() + ws.start + ws.length,
-                                   QTextCursor::KeepAnchor);
-                    ws_sel.cursor = wc;
-                    secondarySel.append(ws_sel);
-
-					secondaryMarks.insert(i, isCurrent ? CodeEditor::LineMark::Current
-						: CodeEditor::LineMark::Insert);
-                }
-            }
-        }
-        else if (al.op == DiffOp::Delete) {
-            QTextEdit::ExtraSelection sel;
-            sel.format.setBackground(colorFiller());
-            sel.format.setProperty(QTextFormat::FullWidthSelection, true);
-            QTextCursor c(m_secondary->document()->findBlockByNumber(i));
-            c.clearSelection();
-            sel.cursor = c;
-            secondarySel.append(sel);
-
-			secondaryMarks.insert(i, CodeEditor::LineMark::None);
-        }
-    }
-
-    m_primary->setExtraSelections(primarySel);
-    m_secondary->setExtraSelections(secondarySel);
+	m_primary->setBaseExtraSelections(primarySel);
+	m_secondary->setBaseExtraSelections(secondarySel);
 	m_primary->setLineMarks(primaryMarks);
 	m_secondary->setLineMarks(secondaryMarks);
 }
