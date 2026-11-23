@@ -50,6 +50,14 @@ CodeEditor::CodeEditor(FontManager *fontManager,
 	connect(this, &CodeEditor::cursorPositionChanged,
 		this, &CodeEditor::highlightCurrentLine);
 
+	// --- новое: перерисовка рамки текущей строки ---
+	connect(this, &CodeEditor::cursorPositionChanged,
+		this, &CodeEditor::scheduleCurrentLineRepaint);
+	connect(this, &CodeEditor::selectionChanged,
+		this, &CodeEditor::scheduleCurrentLineRepaint);
+	connect(this, &CodeEditor::textChanged,
+		this, &CodeEditor::scheduleCurrentLineRepaint);
+
 	updateLineNumberAreaWidth(0);
 	highlightCurrentLine();
 
@@ -58,6 +66,13 @@ CodeEditor::CodeEditor(FontManager *fontManager,
 
 	// 7. Highlighter Ч последним, когда всЄ остальное готово
 	m_highlighter = new Highlighter(document(), m_fontManager, elements, this);
+}
+
+void CodeEditor::scheduleCurrentLineRepaint()
+{
+	if (!m_highlightCurrentLineEnabled)
+		return;
+	viewport()->update();
 }
 
 void CodeEditor::setSyntaxStyles(const QVector<SyntaxElementStyle> &elements)
@@ -118,7 +133,35 @@ void CodeEditor::resizeEvent(QResizeEvent *event)
 		QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
 }
 
+// CodeEditor.cpp
+void CodeEditor::paintEvent(QPaintEvent *event)
+{
+	QPlainTextEdit::paintEvent(event);
 
+	if (!m_highlightCurrentLineEnabled)
+		return;
+
+	QTextCursor cur = textCursor();
+	if (cur.hasSelection())
+		return; // или не возвращать Ч на твой вкус
+
+	QTextBlock block = cur.block();
+	if (!block.isValid() || !block.isVisible())
+		return;
+
+	QRectF r = blockBoundingGeometry(block).translated(contentOffset());
+	// Ќа всю ширину viewport:
+	QRectF rect(0, r.top(), viewport()->width(), r.height());
+
+	QPainter painter(viewport());
+	painter.setRenderHint(QPainter::Antialiasing, false);
+	QPen pen(QColor(255, 200, 0), 1.5); // жЄлта€ рамка
+	painter.setPen(pen);
+	painter.setBrush(Qt::NoBrush);
+	// „уть поджать, чтобы лини€ не обрезалась кра€ми viewport
+	rect.adjust(0.5, 0.5, -1.5, -1.5);
+	painter.drawRect(rect);
+}
 
 void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 {
@@ -189,11 +232,17 @@ void CodeEditor::applyDefaultFont()
 
 void CodeEditor::setHighlightCurrentLineEnabled(bool enabled)
 {
+	if (m_highlightCurrentLineEnabled == enabled)
+		return;
 	m_highlightCurrentLineEnabled = enabled;
-	if (!enabled)
-		setExtraSelections({});
-	else
+	if (!enabled) {
+		setExtraSelections(m_baseSelections);
+		viewport()->update();
+	}
+	else {
 		highlightCurrentLine();
+		viewport()->update();
+	}
 }
 
 // CodeEditor.cpp
@@ -226,21 +275,22 @@ void CodeEditor::setBaseExtraSelections(const QList<QTextEdit::ExtraSelection> &
 {
 	m_baseSelections = s;
 	rebuildExtraSelections();
+	viewport()->update();
 }
 
 void CodeEditor::rebuildExtraSelections()
 {
 	QList<QTextEdit::ExtraSelection> all = m_baseSelections;
 
-	if (m_highlightCurrentLineEnabled) {
-		QTextEdit::ExtraSelection selection;
-		QColor lineColor = QColor(Qt::yellow).lighter(180);
-		selection.format.setBackground(lineColor);
-		selection.format.setProperty(QTextFormat::FullWidthSelection, true);
-		selection.cursor = textCursor();
-		selection.cursor.clearSelection();
-		all.append(selection);
-	}
+//	if (m_highlightCurrentLineEnabled) {
+//		QTextEdit::ExtraSelection selection;
+//		QColor lineColor = QColor(Qt::yellow).lighter(180);
+//		selection.format.setBackground(lineColor);
+//		selection.format.setProperty(QTextFormat::FullWidthSelection, true);
+//		selection.cursor = textCursor();
+//		selection.cursor.clearSelection();
+//		all.append(selection);
+//	}
 
 	setExtraSelections(all);
 }

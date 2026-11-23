@@ -18,7 +18,7 @@ namespace ct
 		return isSpace(c) || isNewline(c);
 	}
 	
-	bool	isDigit(int c)
+	bool	isDecDigit(int c)
 	{
 		return c>='0' && c<='9';
 	}

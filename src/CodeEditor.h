@@ -41,12 +41,13 @@ public:
 	void setBaseExtraSelections(const QList<QTextEdit::ExtraSelection> &selections);
 protected:
 	void resizeEvent(QResizeEvent *event) override;
+	void paintEvent(QPaintEvent *event) override;
 
 private slots:
 	void updateLineNumberAreaWidth(int newBlockCount);
 	void updateLineNumberArea(const QRect &rect, int dy);
 	void highlightCurrentLine();
-
+	void scheduleCurrentLineRepaint();
 private:
 	void rebuildExtraSelections();   // m_baseSelections + жёлтая текущая строка
 
