@@ -1,0 +1,9 @@
+	bool	isAlpha(int c)
+	{
+		return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z';
+	}
+
+	bool	isIdstart(int c)
+	{
+		return isAlpha(c) || c == '_';
+	}

@@ -62,7 +62,7 @@ public:
     void compute(const QString &primaryText,
                  const QString &secondaryText,
                  bool ignoreWhitespace = true);
-
+		
     bool isEmpty() const { return m_aligned.isEmpty(); }
 
     const QVector<AlignedLine> &alignedLines() const { return m_aligned; }

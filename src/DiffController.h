@@ -111,6 +111,17 @@ private:
     // Восстановить позицию курсора в secondary после перезагрузки текстов.
     void restoreSecondaryCursor(int editorLine, int column);
 
+	// Первая реальная primary-строка (primaryFileLine) после aligned-строки
+	// alignedIndexExclusive (не включая её). Если после неё primary-строк
+	// нет — INT_MAX (значит, «следующего» hunka нет, останется последний).
+	int firstPrimaryLineAfterAligned(int alignedIndexExclusive) const;
+
+	// Индекс hunka в ТЕКУЩЕЙ модели, который идёт первым после
+	// primary-строки anchorPrimaryFileLine. Если таких нет — последний
+	// hunk. Если hunks нет вообще — -1.
+	int nextHunkAfterPrimaryLine(int anchorPrimaryFileLine) const;
+private:
+
     // Блокировка рекурсии в syncScrollFrom.
     bool m_syncingScroll = false;
 

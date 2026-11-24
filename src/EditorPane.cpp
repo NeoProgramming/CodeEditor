@@ -14,6 +14,7 @@
 #include <QDateTime>
 #include <QApplication>
 #include <QClipboard>
+#include <QTextBlock>
 
 QString secondarySourceLabel(SecondarySource src)
 {
@@ -147,26 +148,78 @@ void EditorPane::setSecondary(SecondarySource source,
 
 void EditorPane::clearSecondary()
 {
-	if (m_primary) {
+	// 1. Если был diff-режим — забрать из контроллера «реальный» primary
+	//    (без заполнителей, но с применёнными hunks) и вернуть его в редактор.
+	if (m_diffController) {
+		const QString realText = m_diffController->primaryRealText();
+
+		// Сохраним позицию курсора по «реальному» тексту:
+		// в diff-режиме курсор стоит на aligned-строке, а нам нужна
+		// соответствующая строка в realText. Проще — сохранить номер
+		// блока и попытаться восстановить по ближайшей реальной строке.
+		const int alignedBlock = m_primary->textCursor().blockNumber();
+		const int realBlock = m_diffController->model()
+			.primaryFileLineForEditorLine(alignedBlock);
+		const int realColumn = m_primary->textCursor().positionInBlock();
+
+		// Снять подсветки до смены текста, чтобы не мигало.
 		m_primary->setBaseExtraSelections({});
 		m_primary->clearLineMarks();
+
+		// Загрузить реальный текст (без заполнителей).
+		m_primary->setPlainText(realText);
+
+		// Восстановить позицию курсора, если возможно.
+		QTextBlock b = (realBlock >= 0)
+			? m_primary->document()->findBlockByNumber(realBlock)
+			: QTextBlock();
+		if (b.isValid()) {
+			QTextCursor c(b);
+			const int col = qMin(realColumn, b.length() - 1);
+			c.setPosition(b.position() + qMax(0, col));
+			m_primary->setTextCursor(c);
+		}
+		else {
+			// fallback — начало документа
+			QTextCursor c = m_primary->textCursor();
+			c.movePosition(QTextCursor::Start);
+			m_primary->setTextCursor(c);
+		}
+
+		// Снять read-only с primary (diff-режим его ставил).
+		m_primary->setReadOnly(false);
 	}
+	else {
+		// Diff-контроллера не было, но secondary мог быть (например,
+		// создан через setSecondary без контроллера). Тогда просто
+		// убираем подсветки у primary.
+		if (m_primary) {
+			m_primary->setBaseExtraSelections({});
+			m_primary->clearLineMarks();
+		}
+	}
+
+	// 2. Убрать подсветки secondary (если есть).
 	if (m_secondary) {
 		m_secondary->setBaseExtraSelections({});
 		m_secondary->clearLineMarks();
 	}
 
+	// 3. Удалить контроллер.
 	delete m_diffController;
 	m_diffController = nullptr;
 
-    if (!m_secondary)
-        return;
+	// 4. Удалить secondary из splitter'а.
+	if (!m_secondary)
+		return;
 
-    m_secondary->deleteLater();
-    m_secondary = nullptr;
-    m_secondarySource = SecondarySource::None;
-    m_secondaryLabel.clear();
-    updateTitle();
+//@	m_splitter->removeWidget(m_secondary);
+	m_secondary->deleteLater();
+	m_secondary = nullptr;
+	m_secondarySource = SecondarySource::None;
+	m_secondaryLabel.clear();
+	m_secondaryVersionPath.clear();
+	updateTitle();
 	emit secondaryChanged();
 }
 

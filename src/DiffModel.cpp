@@ -3,6 +3,7 @@
 #include <QStringList>
 #include <QRegularExpression>
 #include <algorithm>
+#include <limits>
 
 // ============================================================
 // Вспомогательное: нормализация строки для сравнения
@@ -43,7 +44,8 @@ namespace {
 	// Обычный DP-подход O(N*M) памяти; для первой итерации достаточно.
 	// Перед вызовом префикс/суффикс уже обрезаны, поэтому N, M — только
 	// различающаяся середина.
-	QVector<QPair<int, int>> lcsMatch(const QVector<QString> &a,
+	QVector<QPair<int, int>> lcsMatch(
+		const QVector<QString> &a,
 		const QVector<QString> &b)
 	{
 		const int n = a.size();
@@ -128,13 +130,15 @@ namespace {
 		return tokens;
 	}
 
+	// лишнее
 	QVector<Token> tokensOf(const QString &s)
 	{
 		return tokenize(s);
 	}
 
 	// LCS по токенам, возвращает совпадающие пары индексов.
-	QVector<QPair<int, int>> lcsTokens(const QVector<Token> &a, const QString &sa,
+	QVector<QPair<int, int>> lcsTokens(
+		const QVector<Token> &a, const QString &sa,
 		const QVector<Token> &b, const QString &sb)
 	{
 		const int n = a.size();
@@ -184,8 +188,8 @@ namespace {
 	{
 		if (a == b) return 1.0;
 
-		const QVector<Token> ta = tokensOf(a);
-		const QVector<Token> tb = tokensOf(b);
+		const QVector<Token> ta = tokenize(a);
+		const QVector<Token> tb = tokenize(b);
 		if (ta.isEmpty() && tb.isEmpty()) return 1.0;
 		if (ta.isEmpty() || tb.isEmpty()) return 0.0;
 
@@ -203,6 +207,188 @@ namespace {
 // DiffModel
 // ============================================================
 
+// ============================================================
+// Выравнивание одного блока несовпадений
+// ============================================================
+//
+// pFrom..pTo-1 — удалённые/заменённые primary-строки
+// sFrom..sTo-1 — добавленные/заменяющие secondary-строки
+//
+// Возвращает последовательность AlignedLine для этого блока.
+// Порядок: монотонный по p и по s.
+//
+// Стратегия:
+//   1) жадно подобрать пары Replace (похожие строки),
+//      отфильтровать так, чтобы пары были монотонны по s
+//      (иначе порядок AlignedLine станет некорректным);
+//   2) пройти p и s одновременно, вставляя Replace в точках пар,
+//      Delete для непарных p, Insert для непарных s.
+//
+// Результат по построению:
+//   - каждая p-строка встречается ровно один раз (Delete или Replace);
+//   - каждая s-строка встречается ровно один раз (Insert или Replace);
+//   - порядок в результирующем векторе соответствует порядку в файлах.
+
+struct PairPlan {
+	QVector<int> pToS;   // для p: индекс s или -1 (Delete)
+};
+
+QVector<QPair<int, int>> pairReplaces(const QVector<QString> &pMid,
+	const QVector<QString> &sMid,
+	int pFrom, int pTo,
+	int sFrom, int sTo)
+{
+	QVector<bool> sUsed(sTo - sFrom, false);
+	QVector<QPair<int, int>> raw;   // (p, s)
+
+	for (int p = pFrom; p < pTo; ++p) {
+		int bestS = -1;
+		double bestScore = kReplaceThreshold;
+		for (int s = sFrom; s < sTo; ++s) {
+			if (sUsed[s - sFrom]) continue;
+			const double sc = similarity(pMid[p], sMid[s]);
+			if (sc > bestScore) {
+				bestScore = sc;
+				bestS = s;
+			}
+		}
+		if (bestS >= 0) {
+			raw.append({ p, bestS });
+			sUsed[bestS - sFrom] = true;
+		}
+	}
+
+	// Сортируем по p (жадность уже даёт возрастание p, но на всякий случай).
+	std::sort(raw.begin(), raw.end(),
+		[](const QPair<int, int> &x, const QPair<int, int> &y) {
+		return x.first < y.first;
+	});
+
+	// Фильтруем немонотонные по s: оставляем только те пары,
+	// где s строго больше последнего принятого s.
+	QVector<QPair<int, int>> mono;
+	int lastS = sFrom - 1;
+	for (const auto &pr : raw) {
+		if (pr.second > lastS) {
+			mono.append(pr);
+			lastS = pr.second;
+		}
+	}
+	return mono;
+}
+
+// Построение AlignedLine (фабрики)
+// ============================================================
+
+AlignedLine makeEqual(const QString &pt, const QString &st,
+	int pFile, int sFile)
+{
+	AlignedLine al;
+	al.op = DiffOp::Equal;
+	al.primaryText = pt;
+	al.secondaryText = st;
+	al.primaryFileLine = pFile;
+	al.secondaryFileLine = sFile;
+	return al;
+}
+
+AlignedLine makeDelete(const QString &pt, int pFile)
+{
+	AlignedLine al;
+	al.op = DiffOp::Delete;
+	al.primaryText = pt;
+	al.primaryFileLine = pFile;
+	return al;
+}
+
+AlignedLine makeInsert(const QString &st, int sFile)
+{
+	AlignedLine al;
+	al.op = DiffOp::Insert;
+	al.secondaryText = st;
+	al.secondaryFileLine = sFile;
+	return al;
+}
+
+AlignedLine makeReplace(const QString &pt, const QString &st,
+	int pFile, int sFile)
+{
+	AlignedLine al;
+	al.op = DiffOp::Replace;
+	al.primaryText = pt;
+	al.secondaryText = st;
+	al.primaryFileLine = pFile;
+	al.secondaryFileLine = sFile;
+	return al;
+}
+
+// Добавить в out последовательность AlignedLine для блока несовпадений.
+void emitBlock(QVector<AlignedLine> &out,
+	const QVector<QString> &pMid, const QVector<QString> &sMid,
+	int pFrom, int pTo, int sFrom, int sTo)
+{
+	if (pFrom >= pTo && sFrom >= sTo)
+		return;
+
+	// Только удаления.
+	if (sFrom >= sTo) {
+		for (int p = pFrom; p < pTo; ++p)
+			out.append(makeDelete(pMid[p], p));
+		return;
+	}
+	// Только вставки.
+	if (pFrom >= pTo) {
+		for (int s = sFrom; s < sTo; ++s)
+			out.append(makeInsert(sMid[s], s));
+		return;
+	}
+
+	// Смешанный блок: подбираем монотонные пары Replace.
+	const QVector<QPair<int, int>> pairs =
+		pairReplaces(pMid, sMid, pFrom, pTo, sFrom, sTo);
+
+	int p = pFrom;
+	int s = sFrom;
+	int pairIdx = 0;
+
+	while (p < pTo || s < sTo) {
+		// Если текущая p — начало пары, и её s == текущая s — Replace.
+		if (pairIdx < pairs.size()
+			&& pairs[pairIdx].first == p
+			&& pairs[pairIdx].second == s) {
+			out.append(makeReplace(pMid[p], sMid[s], p, s));
+			++p; ++s; ++pairIdx;
+			continue;
+		}
+
+		// Если текущая p — начало пары, но s < парного s — сначала Insert'ы.
+		if (pairIdx < pairs.size()
+			&& pairs[pairIdx].first == p
+			&& pairs[pairIdx].second > s) {
+			out.append(makeInsert(sMid[s], s));
+			++s;
+			continue;
+		}
+
+		// Иначе: если p ещё есть и текущая p не в паре — Delete.
+		if (p < pTo) {
+			out.append(makeDelete(pMid[p], p));
+			++p;
+			continue;
+		}
+
+		// Остались только s — Insert'ы.
+		if (s < sTo) {
+			out.append(makeInsert(sMid[s], s));
+			++s;
+			continue;
+		}
+
+		// Сюда попасть не должны, но на всякий случай — break.
+		break;
+	}
+}
+
 void DiffModel::compute(const QString &primaryText,
 	const QString &secondaryText,
 	bool ignoreWhitespace)
@@ -211,8 +397,8 @@ void DiffModel::compute(const QString &primaryText,
 	m_hunks.clear();
 	m_wordCache.clear();
 
-	QStringList primaryLines = splitLines(primaryText);
-	QStringList secondaryLines = splitLines(secondaryText);
+	const QStringList primaryLines = splitLines(primaryText);
+	const QStringList secondaryLines = splitLines(secondaryText);
 
 	// Нормализованные версии — только для сравнения.
 	QVector<QString> pNorm, sNorm;
@@ -221,17 +407,18 @@ void DiffModel::compute(const QString &primaryText,
 	for (const QString &l : primaryLines)   pNorm.append(normalizeForCompare(l, ignoreWhitespace));
 	for (const QString &l : secondaryLines) sNorm.append(normalizeForCompare(l, ignoreWhitespace));
 
-	// --- Обрезка общего префикса ---
+	// --- Общий префикс ---
 	int prefix = 0;
 	while (prefix < pNorm.size() && prefix < sNorm.size()
 		&& pNorm[prefix] == sNorm[prefix])
 		++prefix;
 
-	// --- Обрезка общего суффикса (не пересекаясь с префиксом) ---
+	// --- Общий суффикс (не пересекаясь с префиксом) ---
 	int suffix = 0;
 	while (suffix < pNorm.size() - prefix
 		&& suffix < sNorm.size() - prefix
-		&& pNorm[pNorm.size() - 1 - suffix] == sNorm[sNorm.size() - 1 - suffix])
+		&& pNorm[pNorm.size() - 1 - suffix]
+		== sNorm[sNorm.size() - 1 - suffix])
 		++suffix;
 
 	const int pMidStart = prefix;
@@ -239,184 +426,73 @@ void DiffModel::compute(const QString &primaryText,
 	const int sMidStart = prefix;
 	const int sMidEnd = sNorm.size() - suffix;
 
-	// --- Строим выравнивание ---
-
-	// 1. Префикс — Equal
+	// --- 1. Префикс: Equal ---
 	for (int i = 0; i < prefix; ++i) {
-		AlignedLine al;
-		al.op = DiffOp::Equal;
-		al.primaryText = primaryLines[i];
-		al.secondaryText = secondaryLines[i];
-		al.primaryFileLine = i;
-		al.secondaryFileLine = i;
-		m_aligned.append(al);
+		m_aligned.append(makeEqual(primaryLines[i], secondaryLines[i], i, i));
 	}
 
-	// 2. Середина — LCS + пары Replace
+	// --- 2. Середина: LCS + Replace ---
 	if (pMidStart < pMidEnd || sMidStart < sMidEnd) {
-		QVector<QString> pMid; //= primaryLines.mid(pMidStart, pMidEnd - pMidStart);
-		QVector<QString> sMid; //= secondaryLines.mid(sMidStart, sMidEnd - sMidStart);
-		for (int k = pMidStart; k < pMidEnd; ++k) 
-			pMid.append(primaryLines[k]);
-		for (int k = sMidStart; k < sMidEnd; ++k) 
-			sMid.append(secondaryLines[k]);
+		QVector<QString> pMid, sMid;
+		pMid.reserve(pMidEnd - pMidStart);
+		sMid.reserve(sMidEnd - sMidStart);
+		for (int k = pMidStart; k < pMidEnd; ++k) pMid.append(primaryLines[k]);
+		for (int k = sMidStart; k < sMidEnd; ++k) sMid.append(secondaryLines[k]);
 
-		QVector<QString> pNormMid = pNorm.mid(pMidStart, pMidEnd - pMidStart);
-		QVector<QString> sNormMid = sNorm.mid(sMidStart, sMidEnd - sMidStart);
+		const QVector<QString> pNormMid = pNorm.mid(pMidStart, pMidEnd - pMidStart);
+		const QVector<QString> sNormMid = sNorm.mid(sMidStart, sMidEnd - sMidStart);
 
-		const auto pairs = lcsMatch(pNormMid, sNormMid);
+		// Пары совпадающих по LCS строк — якоря.
+		const QVector<QPair<int, int>> anchors = lcsMatch(pNormMid, sNormMid);
 
-		// Идём по середине, между «якорями» LCS — блоки несовпадений.
-		int pi = 0, si = 0;
-		auto emitEqual = [&](int pIdx, int sIdx) {
-			AlignedLine al;
-			al.op = DiffOp::Equal;
-			al.primaryText = pMid[pIdx];
-			al.secondaryText = sMid[sIdx];
-			al.primaryFileLine = pMidStart + pIdx;
-			al.secondaryFileLine = sMidStart + sIdx;
-			m_aligned.append(al);
-		};
-		auto emitBlock = [&](int pFrom, int pTo, int sFrom, int sTo) {
-			// pFrom..pTo-1 удалены, sFrom..sTo-1 добавлены.
-			// Жадно сопоставляем похожие пары -> Replace, остальное Delete/Insert.
-			QVector<bool> pUsed(pTo - pFrom, false);
-			QVector<bool> sUsed(sTo - sFrom, false);
-			QVector<QPair<int, int>> replacePairs;
-
-			for (int p = pFrom; p < pTo; ++p) {
-				int bestS = -1;
-				double bestScore = kReplaceThreshold;
-				for (int s = sFrom; s < sTo; ++s) {
-					if (sUsed[s - sFrom]) continue;
-					const double sc = similarity(pMid[p], sMid[s]);
-					if (sc > bestScore) {
-						bestScore = sc;
-						bestS = s;
-					}
-				}
-				if (bestS >= 0) {
-					replacePairs.append({ p, bestS });
-					pUsed[p - pFrom] = true;
-					sUsed[bestS - sFrom] = true;
+		// Идём по серединам, между якорями — блоки несовпадений.
+		int prevP = 0;
+		int prevS = 0;
+		for (const auto &pr : anchors) {
+			if (pr.first > prevP || pr.second > prevS) {
+				// emitBlock принимает индексы в pMid/sMid, а также
+				// заполняет primaryFileLine/secondaryFileLine как
+				// pMidStart+idx / sMidStart+idx.
+				// Передадим сдвиги через лямбду-обёртку.
+				QVector<AlignedLine> block;
+				emitBlock(block, pMid, sMid, prevP, pr.first, prevS, pr.second);
+				for (AlignedLine &al : block) {
+					if (al.primaryFileLine >= 0)
+						al.primaryFileLine += pMidStart;
+					if (al.secondaryFileLine >= 0)
+						al.secondaryFileLine += sMidStart;
+					m_aligned.append(al);
 				}
 			}
-
-			// Порядок пар — по возрастанию p (и s одновременно, т.к. LCS
-			// гарантирует монотонность; но жадность может дать не монотонные s —
-			// сортируем по p и проверяем).
-			std::sort(replacePairs.begin(), replacePairs.end(),
-				[](const QPair<int, int> &x, const QPair<int, int> &y) {
-				return x.first < y.first;
-			});
-
-			// Проходим по блоку, вставляя Delete/Insert для непарных
-			// и Replace для парных. Чтобы порядок был корректным,
-			// пройдём по p от pFrom до pTo и по s, «съедая» пары.
-			int p = pFrom;
-			int s = sFrom;
-			int pairIdx = 0;
-			while (p < pTo || s < sTo) {
-				// Если текущая p — начало пары, и её s == текущая s,
-				// выдаём Replace.
-				if (pairIdx < replacePairs.size()
-					&& replacePairs[pairIdx].first == p
-					&& replacePairs[pairIdx].second == s) {
-					AlignedLine al;
-					al.op = DiffOp::Replace;
-					al.primaryText = pMid[p];
-					al.secondaryText = sMid[s];
-					al.primaryFileLine = pMidStart + p;
-					al.secondaryFileLine = sMidStart + s;
-					m_aligned.append(al);
-					++p; ++s; ++pairIdx;
-					continue;
-				}
-				// Иначе — если p не в паре (или пара «впереди»), Delete.
-				// Но нужно не пропустить случай, когда s ждёт своей пары.
-				// Упрощение: если p — в паре, но s < пары.s, значит,
-				// сначала надо вставить Insert для s. И наоборот.
-				bool pInPair = false;
-				int pPairS = -1;
-				for (int k = pairIdx; k < replacePairs.size(); ++k) {
-					if (replacePairs[k].first == p) {
-						pInPair = true; pPairS = replacePairs[k].second;
-						break;
-					}
-				}
-				if (pInPair) {
-					// s < pPairS — вставляем Insert
-					if (s < pPairS) {
-						AlignedLine al;
-						al.op = DiffOp::Insert;
-						al.secondaryText = sMid[s];
-						al.secondaryFileLine = sMidStart + s;
-						m_aligned.append(al);
-						++s;
-					}
-					else {
-						// s > pPairS — это не должно случиться при монотонных
-						// парах; на всякий случай — Delete.
-						AlignedLine al;
-						al.op = DiffOp::Delete;
-						al.primaryText = pMid[p];
-						al.primaryFileLine = pMidStart + p;
-						m_aligned.append(al);
-						++p;
-					}
-				}
-				else {
-					// p не в паре — Delete
-					AlignedLine al;
-					al.op = DiffOp::Delete;
-					al.primaryText = pMid[p];
-					al.primaryFileLine = pMidStart + p;
-					m_aligned.append(al);
-					++p;
-				}
-
-				// Если p закончились, а s ещё есть — Insert'ы
-				if (p >= pTo) {
-					while (s < sTo) {
-						AlignedLine al;
-						al.op = DiffOp::Insert;
-						al.secondaryText = sMid[s];
-						al.secondaryFileLine = sMidStart + s;
-						m_aligned.append(al);
-						++s;
-					}
-					break;
-				}
-			}
-		};
-
-		// Проходим по якорям LCS
-		int prevP = 0, prevS = 0;
-		for (const auto &pr : pairs) {
-			if (pr.first > prevP || pr.second > prevS)
-				emitBlock(prevP, pr.first, prevS, pr.second);
-			emitEqual(pr.first, pr.second);
+			m_aligned.append(makeEqual(
+				pMid[pr.first], sMid[pr.second],
+				pMidStart + pr.first, sMidStart + pr.second));
 			prevP = pr.first + 1;
 			prevS = pr.second + 1;
 		}
-		if (prevP < pMid.size() || prevS < sMid.size())
-			emitBlock(prevP, pMid.size(), prevS, sMid.size());
+
+		if (prevP < pMid.size() || prevS < sMid.size()) {
+			QVector<AlignedLine> block;
+			emitBlock(block, pMid, sMid, prevP, pMid.size(), prevS, sMid.size());
+			for (AlignedLine &al : block) {
+				if (al.primaryFileLine >= 0)
+					al.primaryFileLine += pMidStart;
+				if (al.secondaryFileLine >= 0)
+					al.secondaryFileLine += sMidStart;
+				m_aligned.append(al);
+			}
+		}
 	}
 
-	// 3. Суффикс — Equal
+	// --- 3. Суффикс: Equal ---
 	for (int k = 0; k < suffix; ++k) {
 		const int pi = pMidEnd + k;
 		const int si = sMidEnd + k;
-		AlignedLine al;
-		al.op = DiffOp::Equal;
-		al.primaryText = primaryLines[pi];
-		al.secondaryText = secondaryLines[si];
-		al.primaryFileLine = pi;
-		al.secondaryFileLine = si;
-		m_aligned.append(al);
+		m_aligned.append(makeEqual(
+			primaryLines[pi], secondaryLines[si], pi, si));
 	}
 
-	// --- Сборка hunks: группируем подряд идущие не-Equal ---
+	// --- 4. Hunks: группы подряд идущих не-Equal ---
 	int i = 0;
 	while (i < m_aligned.size()) {
 		if (m_aligned[i].op == DiffOp::Equal) { ++i; continue; }
@@ -439,6 +515,8 @@ void DiffModel::compute(const QString &primaryText,
 			m_aligned[k].hunkIndex = idx;
 	}
 }
+
+
 
 // ---------------------------------------------------------------- texts
 

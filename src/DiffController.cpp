@@ -2,6 +2,7 @@
 #include "CodeEditor.h"
 #include "DiffColors.h"
 
+#include <limits>
 #include <QTextCursor>
 #include <QTextEdit>
 #include <QTextBlock>
@@ -308,87 +309,92 @@ void DiffController::applyAlignedLineToPrimary(int alignedIndex)
 
 bool DiffController::applyHunk(int idx)
 {
-    if (idx < 0)
-        idx = (m_currentHunk >= 0) ? m_currentHunk : hunkNearCursor();
-    if (idx < 0 || idx >= m_model.hunkCount())
-        return false;
+	if (idx < 0)
+		idx = (m_currentHunk >= 0) ? m_currentHunk : hunkNearCursor();
+	if (idx < 0 || idx >= m_model.hunkCount())
+		return false;
 
-    const DiffHunk &h = m_model.hunks()[idx];
-    if (!h.hasInserts && !h.hasDeletes)
-        return false;
+	const DiffHunk &h = m_model.hunks()[idx];
+	if (!h.hasInserts && !h.hasDeletes)
+		return false;
 
-    // Применяем все строки hunka к m_primaryText.
-    // Идём от конца к началу, чтобы индексы не «плыли» при удалении.
-    // Но проще — пересобрать m_primaryText из модели с учётом
-    // применения всех строк hunka. Сделаем через построение.
-    const QVector<AlignedLine> &lines = m_model.alignedLines();
-    QStringList out;
-    for (int i = 0; i < lines.size(); ++i) {
-        const AlignedLine &l = lines[i];
-        const bool inHunk = (l.hunkIndex == idx);
+	// --- ЯКОРЬ: первая реальная primary-строка ПОСЛЕ hunka ---
+	// Считаем ДО recompute, по текущему выравниванию.
+	const int lastAlignedOfHunk = h.firstAlignedLine + h.lineCount - 1;
+	const int anchorPrimaryFileLine =
+		firstPrimaryLineAfterAligned(lastAlignedOfHunk);
 
-        switch (l.op) {
-        case DiffOp::Equal:
-            out.append(l.primaryText);
-            break;
-        case DiffOp::Delete:
-            if (!inHunk)
-                out.append(l.primaryText);
-            break;
-        case DiffOp::Insert:
-            if (inHunk)
-                out.append(l.secondaryText);
-            break;
-        case DiffOp::Replace:
-            out.append(inHunk ? l.secondaryText : l.primaryText);
-            break;
-        }
-    }
-    m_primaryText = out.join(QLatin1Char('\n'));
+	// --- построение нового m_primaryText (как было) ---
+	const QVector<AlignedLine> &lines = m_model.alignedLines();
+	QStringList out;
+	for (int i = 0; i < lines.size(); ++i) {
+		const AlignedLine &l = lines[i];
+		const bool inHunk = (l.hunkIndex == idx);
 
-    // Запомним, куда вернуть курсор secondary: на первую строку hunka.
-    const int restoreLine = h.firstAlignedLine;
+		switch (l.op) {
+		case DiffOp::Equal:
+			out.append(l.primaryText);
+			break;
+		case DiffOp::Delete:
+			if (!inHunk)
+				out.append(l.primaryText);
+			break;
+		case DiffOp::Insert:
+			if (inHunk)
+				out.append(l.secondaryText);
+			break;
+		case DiffOp::Replace:
+			out.append(inHunk ? l.secondaryText : l.primaryText);
+			break;
+		}
+	}
+	m_primaryText = out.join(QLatin1Char('\n'));
 
-    // Пересчитать модель и перезагрузить редакторы.
-    m_model.compute(m_primaryText, m_secondaryText, m_ignoreWhitespace);
-    m_currentHunk = -1;
-    loadAlignedTexts();
-    if (m_model.hunkCount() > 0)
-        setCurrentHunk(qMin(restoreLine, m_model.hunkCount() - 1),
-                       /*scroll*/ true);
+	// --- пересчёт и выбор следующего hunka ---
+	m_model.compute(m_primaryText, m_secondaryText, m_ignoreWhitespace);
+	m_currentHunk = -1;
+	loadAlignedTexts();
 
-    // Пометить primary как изменённый.
-    m_primary->document()->setModified(true);
-    emit primaryModifiedByDiff();
-    emit hunksChanged();
-    return true;
+	const int next = nextHunkAfterPrimaryLine(anchorPrimaryFileLine);
+	if (next >= 0)
+		setCurrentHunk(next, /*scroll*/ true);
+
+	m_primary->document()->setModified(true);
+	emit primaryModifiedByDiff();
+	emit hunksChanged();
+	return true;
 }
 
 bool DiffController::applyLineAtSecondaryEditorLine(int secondaryEditorLine)
 {
-    if (secondaryEditorLine < 0
-        || secondaryEditorLine >= m_model.alignedCount())
-        return false;
+	if (secondaryEditorLine < 0
+		|| secondaryEditorLine >= m_model.alignedCount())
+		return false;
 
-    const AlignedLine &al = m_model.alignedLines()[secondaryEditorLine];
-    if (al.op == DiffOp::Equal || al.op == DiffOp::Delete)
-        return false;   // нечего переносить
+	const AlignedLine &al = m_model.alignedLines()[secondaryEditorLine];
+	if (al.op == DiffOp::Equal || al.op == DiffOp::Delete)
+		return false;   // нечего переносить
 
-    applyAlignedLineToPrimary(secondaryEditorLine);
+	// --- ЯКОРЬ: первая реальная primary-строка ПОСЛЕ этой aligned-строки ---
+	// Считаем ДО applyAlignedLineToPrimary/recompute, по текущему выравниванию.
+	const int anchorPrimaryFileLine =
+		firstPrimaryLineAfterAligned(secondaryEditorLine);
 
-    const int restoreLine = secondaryEditorLine;
-    m_model.compute(m_primaryText, m_secondaryText, m_ignoreWhitespace);
-    m_currentHunk = -1;
-    loadAlignedTexts();
-    if (m_model.hunkCount() > 0)
-        setCurrentHunk(qMin(restoreLine, m_model.hunkCount() - 1), true);
+	applyAlignedLineToPrimary(secondaryEditorLine);
 
-    m_primary->document()->setModified(true);
-    emit primaryModifiedByDiff();
-    emit hunksChanged();
-    return true;
+	m_model.compute(m_primaryText, m_secondaryText, m_ignoreWhitespace);
+	m_currentHunk = -1;
+	loadAlignedTexts();
+
+	const int next = nextHunkAfterPrimaryLine(anchorPrimaryFileLine);
+	if (next >= 0)
+		setCurrentHunk(next, /*scroll*/ true);
+
+	m_primary->document()->setModified(true);
+	emit primaryModifiedByDiff();
+	emit hunksChanged();
+	return true;
 }
-
 int DiffController::applyAllRemaining()
 {
     if (m_model.hunkCount() == 0)
@@ -445,4 +451,41 @@ void DiffController::syncScrollFrom(CodeEditor *source)
         source->verticalScrollBar()->value());
 
     m_syncingScroll = false;
+}
+
+int DiffController::firstPrimaryLineAfterAligned(int alignedIndexExclusive) const
+{
+	const QVector<AlignedLine> &lines = m_model.alignedLines();
+	for (int i = alignedIndexExclusive + 1; i < lines.size(); ++i) {
+		const AlignedLine &al = lines[i];
+		if (al.op != DiffOp::Insert && al.primaryFileLine >= 0)
+			return al.primaryFileLine;
+	}
+	return std::numeric_limits<int>::max();
+}
+
+// Возвращает индекс hunka, который идёт первым после primary-строки anchor
+// (или последний, если таковых нет; -1, если hunks нет).
+int DiffController::nextHunkAfterPrimaryLine(int anchorPrimaryFileLine) const
+{
+	const int n = m_model.hunkCount();
+	if (n == 0) 
+		return -1;
+
+	for (int i = 0; i < n; ++i) {
+		const DiffHunk &nh = m_model.hunks()[i];
+		int firstPrimary = std::numeric_limits<int>::max();
+		for (int k = nh.firstAlignedLine;
+			k < nh.firstAlignedLine + nh.lineCount; ++k) {
+			const AlignedLine &al = m_model.alignedLines()[k];
+			if (al.op != DiffOp::Insert && al.primaryFileLine >= 0) {
+				firstPrimary = al.primaryFileLine;
+				break;
+			}
+		}
+		if (firstPrimary >= anchorPrimaryFileLine)
+			return i;
+	}
+	// Все hunks оказались выше якоря (приняли последний) — берём последний.
+	return n - 1;
 }
