@@ -56,6 +56,8 @@ public:
 
     // Реальные (не раздутые) тексты primary и secondary.
     // После apply* они синхронизированы с m_primaryText/m_secondaryText.
+	// Реальный текст primary без заполнителей (то, что должно остаться
+	// в редакторе после выхода из diff-режима). Обновляется в apply*.
     QString primaryRealText()   const { return m_primaryText; }
     QString secondaryRealText() const { return m_secondaryText; }
 

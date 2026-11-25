@@ -153,14 +153,17 @@ void EditorPane::clearSecondary()
 	if (m_diffController) {
 		const QString realText = m_diffController->primaryRealText();
 
-		// Сохраним позицию курсора по «реальному» тексту:
-		// в diff-режиме курсор стоит на aligned-строке, а нам нужна
-		// соответствующая строка в realText. Проще — сохранить номер
-		// блока и попытаться восстановить по ближайшей реальной строке.
-		const int alignedBlock = m_primary->textCursor().blockNumber();
-		const int realBlock = m_diffController->model()
-			.primaryFileLineForEditorLine(alignedBlock);
-		const int realColumn = m_primary->textCursor().positionInBlock();
+		// Запомним флаг модификации до setPlainText — он его сбросит.
+		// В diff-режиме флаг мог быть выставлен applyHunk/applyAllRemaining.
+		const bool wasModified = m_primary->document()->isModified();
+
+		// Запомним, где стоял курсор в aligned-тексте, и попробуем
+		// восстановить по карте aligned -> file line.
+		const QTextCursor oldCursor = m_primary->textCursor();
+		const int alignedBlock = oldCursor.blockNumber();
+		const int alignedColumn = oldCursor.positionInBlock();
+		const int realBlock =
+			m_diffController->model().primaryFileLineForEditorLine(alignedBlock);
 
 		// Снять подсветки до смены текста, чтобы не мигало.
 		m_primary->setBaseExtraSelections({});
@@ -175,12 +178,11 @@ void EditorPane::clearSecondary()
 			: QTextBlock();
 		if (b.isValid()) {
 			QTextCursor c(b);
-			const int col = qMin(realColumn, b.length() - 1);
-			c.setPosition(b.position() + qMax(0, col));
+			const int col = qMin(alignedColumn, qMax(0, b.length() - 1));
+			c.setPosition(b.position() + col);
 			m_primary->setTextCursor(c);
 		}
 		else {
-			// fallback — начало документа
 			QTextCursor c = m_primary->textCursor();
 			c.movePosition(QTextCursor::Start);
 			m_primary->setTextCursor(c);
@@ -188,6 +190,22 @@ void EditorPane::clearSecondary()
 
 		// Снять read-only с primary (diff-режим его ставил).
 		m_primary->setReadOnly(false);
+
+		// Восстановить флаг модификации. Если в diff-режиме hunks
+		// применялись — primary изменён, звёздочка должна остаться.
+		if (wasModified) {
+			m_primaryState.modified = true;
+			m_primary->document()->setModified(true);
+			updateTitle();
+		}
+
+		// ВАЖНО: если в diff-режиме применялись hunks — primary изменён.
+		// applyHunk/applyLineAtSecondaryEditorLine уже ставят document()->setModified(true)
+		// и эмитят primaryModifiedByDiff; но после setPlainText модификация
+		// сбрасывается (setPlainText обнуляет modified). Поэтому
+		// восстанавливаем флаг, если он был.
+		// Проще: спросить у документа до setPlainText и восстановить после.
+		// (Ниже — вариант с сохранением.)
 	}
 	else {
 		// Diff-контроллера не было, но secondary мог быть (например,
@@ -357,33 +375,27 @@ bool EditorPane::acceptSecondary(QString *error)
 		return false;
 
 	// 1. Применить оставшиеся hunks (если контроллер есть).
-	if (m_diffController) {
+	const int appliedBefore = m_diffController
+		? m_diffController->model().hunkCount()
+		: 0;
+	if (m_diffController)
 		m_diffController->applyAllRemaining();
-	}
 
-	// 2. Теперь m_primaryText содержит полный результат.
-	//    Для Buffer — записать m_primaryText в файл.
-	//    Для Version — сделать rename (сам файл версии не менялся), затем
-	//    перечитать m_primaryText с диска.
+	// Реальный текст primary после применения всех hunks.
+	const QString realText = m_diffController
+		? m_diffController->primaryRealText()
+		: m_primary->toPlainText();
+
 	switch (m_secondarySource) {
 	case SecondarySource::Version: {
-		// Версия на диске не менялась — файл versionPath всё ещё содержит
-		// исходное содержимое версии. Rename file.cpp -> ~T, ~T -> file.cpp.
 		QString err;
 		if (!VersionStore::accept(m_primaryState.filePath,
 			m_secondaryVersionPath, &err)) {
 			if (error) *error = err;
 			return false;
 		}
-		// Перечитать file.cpp с диска — но если пользователь применял
-		// hunks вручную, m_primaryText отличается от содержимого
-		// versionPath. Значит, после rename file.cpp содержит содержимое
-		// versionPath, а не m_primaryText. Надо перезаписать file.cpp
-		// содержимым m_primaryText.
 		if (!VersionStore::writeCurrent(m_primaryState.filePath,
-			m_diffController
-				? m_diffController->primaryRealText()
-				: m_primary->toPlainText(),
+			realText,
 			m_primaryState.codecName,
 			&err)) {
 			if (error) *error = err;
@@ -395,15 +407,17 @@ bool EditorPane::acceptSecondary(QString *error)
 			return false;
 		}
 		clearSecondary();
+
+		// Файл только что перезаписан на диске — снимаем modified.
+		m_primaryState.modified = false;
+		m_primary->document()->setModified(false);
+		updateTitle();
 		return true;
 	}
 	case SecondarySource::Buffer: {
-		// m_primaryText содержит всё, что было в buffer + применённые hunks.
 		QString err;
 		if (!VersionStore::writeCurrent(m_primaryState.filePath,
-			m_diffController
-				? m_diffController->primaryRealText()
-				: m_secondary->toPlainText(), 
+			realText,
 			m_primaryState.codecName,
 			&err)) {
 			if (error) *error = err;
@@ -415,6 +429,10 @@ bool EditorPane::acceptSecondary(QString *error)
 			return false;
 		}
 		clearSecondary();
+
+		m_primaryState.modified = false;
+		m_primary->document()->setModified(false);
+		updateTitle();
 		return true;
 	}
 	case SecondarySource::Current:
